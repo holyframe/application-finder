@@ -55,8 +55,7 @@ function fixture(storage = {}) {
       } }
     }
   });
-  for (const name of ["setPostingNumberIconInPage", "updatePostingNumberState", "applyPostingNumberIcon",
-    "markPostingSubmission", "restorePostingNumberIcon", "forgetPostingNumberIcon"]) {
+  for (const name of ["updatePostingNumberState", "markPostingSubmission", "forgetPostingSubmission"]) {
     const match = source.match(new RegExp("^(?:async )?function " + name + "\\b[\\s\\S]*?^}\\r?$", "m"));
     assert.ok(match, name);
     vm.runInContext(match[0], context);
@@ -73,7 +72,7 @@ function fixture(storage = {}) {
   };
 }
 
-test("successful job submissions get unique increasing numbers even when concurrent", async () => {
+test("concurrent successful submissions receive unique log numbers without changing tab icons", async () => {
   const { context, storage, scripts } = fixture();
   const numbers = await Promise.all([
     context.markPostingSubmission(3, "https://jobs.example/last", "one"),
@@ -82,56 +81,62 @@ test("successful job submissions get unique increasing numbers even when concurr
   assert.deepEqual(numbers, [1, 2]);
   assert.equal(storage[storageKey].byTabId[3].number, 1);
   assert.equal(storage[storageKey].byTabId[2].number, 2);
-  assert.deepEqual(scripts.map((call) => call.target.tabId), [3, 2]);
+  assert.deepEqual(scripts, []);
 });
 
-test("reloads and worker restarts restore the number without incrementing the counter", async () => {
+test("worker restarts preserve log numbers and closed tabs drop their tracking", async () => {
   const first = fixture();
   await first.context.markPostingSubmission(3, "https://jobs.example/last", "one");
   const restarted = fixture(first.storage);
-  await restarted.context.restorePostingNumberIcon(3);
-  assert.equal(restarted.scripts[0].args[0], 1);
   assert.equal(first.storage[storageKey].lastNumber, 1);
   assert.equal(await restarted.context.markPostingSubmission(2, "https://jobs.example/first", "two"), 2);
-  await restarted.context.forgetPostingNumberIcon(3);
+  await restarted.context.forgetPostingSubmission(3);
   assert.equal(first.storage[storageKey].byTabId[3], undefined);
   assert.equal(first.storage[storageKey].lastNumber, 2);
+  assert.deepEqual(restarted.scripts, []);
 });
 
-test("numbered favicons survive site icon changes and leave the job title and touch icons intact", () => {
+test("submission tracking leaves site favicons, page titles, and touch icons intact", async () => {
   const fixtureState = fixture();
   const { context, document, links } = fixtureState;
   const site = fixtureState.addIcon("shortcut icon", "/site.ico");
   const touch = fixtureState.addIcon("apple-touch-icon", "/touch.png");
-  context.setPostingNumberIconInPage(12);
+  await context.markPostingSubmission(3, "https://jobs.example/last", "one");
   const url = site.getAttribute("href");
-  assert.match(decodeURIComponent(url), />12<\/text>/);
+  assert.equal(url, "/site.ico");
   assert.equal(document.title, "Engineer - Example");
   assert.equal(touch.getAttribute("href"), "/touch.png");
   site.setAttribute("href", "/new-site.ico");
   fixtureState.mutate();
-  assert.equal(site.getAttribute("href"), url);
-  context.setPostingNumberIconInPage(123);
-  assert.match(decodeURIComponent(site.getAttribute("href")), />123<\/text>/);
-  assert.equal(links.length, 3);
+  assert.equal(site.getAttribute("href"), "/new-site.ico");
+  await context.markPostingSubmission(3, "https://jobs.example/last", "two");
+  assert.equal(site.getAttribute("href"), "/new-site.ico");
+  assert.equal(links.length, 2);
+  assert.deepEqual(fixtureState.scripts, []);
 });
 
-test("a changed page or Save App status is not overwritten by a submission number", async () => {
-  const { context, urls, scripts } = fixture();
-  urls.set(3, "https://jobs.example/another");
-  assert.equal(await context.applyPostingNumberIcon(3, { number: 1, jobUrl: "https://jobs.example/last" }), false);
-  context.saveTitleStatusByTabId.set(2, { state: "saving" });
-  assert.equal(await context.applyPostingNumberIcon(2, { number: 2, jobUrl: "https://jobs.example/first" }), false);
-  assert.equal(scripts.length, 0);
-  context.window.__applicationHelperSaveTitleStatus = { status: "success" };
-  assert.equal(context.setPostingNumberIconInPage(1), false);
+test("tab reloads do not restore old numbered icons from stored submissions", async () => {
+  const { context, storage, scripts } = fixture({
+    [storageKey]: { lastNumber: 7, byTabId: { 3: { number: 7, jobUrl: "https://jobs.example/last" } } }
+  });
+  let onUpdated;
+  context.syncSidePanelForTab = () => {};
+  context.chrome.tabs.onUpdated = { addListener: (listener) => { onUpdated = listener; } };
+  const listener = source.match(/^chrome.tabs.onUpdated.addListener\([\s\S]*?^\}\);/m);
+  assert.ok(listener);
+  vm.runInContext(listener[0], context);
+  onUpdated(3, { status: "complete" }, { id: 3 });
+  await new Promise(setImmediate);
+  assert.deepEqual(scripts, []);
+  assert.equal(storage[storageKey].lastNumber, 7);
 });
 
-test("denied icon access preserves the successful submission number and reports the icon failure", async () => {
-  const { context, storage, logs } = fixture();
+test("submission logging does not require site access or report an icon failure", async () => {
+  const { context, storage, logs, scripts } = fixture();
   context.chrome.scripting.executeScript = async () => { throw new Error("Site access denied"); };
   assert.equal(await context.markPostingSubmission(3, "https://jobs.example/last", "one"), 1);
   assert.equal(storage[storageKey].byTabId[3].number, 1);
-  assert.match(logs[0].message, /URL submitted as number 1/);
-  assert.equal(logs[0].level, "warning");
+  assert.equal(logs[0].message, "URL submitted as number 1.");
+  assert.equal(logs[0].level, "info");
+  assert.deepEqual(scripts, []);
 });

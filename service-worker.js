@@ -1762,6 +1762,7 @@ function stripSaveTabTitlePrefix(title) {
 }
 
 function setSaveTabTitleStatusInPage(status, requestedBaseTitle, iconUrl) {
+  // Stop a number-icon observer left behind by an older extension version.
   window.__applicationHelperPostingNumberIcon?.observer?.disconnect();
   const suffixes = {
     saving: "",
@@ -1922,52 +1923,6 @@ async function finishSaveTabTitleStatus(tabId, succeeded) {
   return applySaveTabTitleStatus(tabId, status.state, status.baseTitle);
 }
 
-function setPostingNumberIconInPage(submissionNumber) {
-  if (!Number.isSafeInteger(submissionNumber) || submissionNumber < 1 ||
-      window.__applicationHelperSaveTitleStatus) {
-    return false;
-  }
-
-  const stateKey = "__applicationHelperPostingNumberIcon";
-  const state = window[stateKey] || {};
-  state.observer?.disconnect();
-  window[stateKey] = state;
-  const digits = String(submissionNumber);
-  const fontSize = digits.length === 1 ? 24 : digits.length === 2 ? 20 : 16;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#5457ff"/><text x="16" y="17" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="700" fill="white" textLength="${digits.length > 2 ? 26 : digits.length * 14}" lengthAdjust="spacingAndGlyphs">${digits}</text></svg>`;
-  const iconUrl = "data:image/svg+xml," + encodeURIComponent(svg);
-
-  const applyIcon = () => {
-    state.favicon ||= document.createElement("link");
-    if (state.favicon.getAttribute("rel") !== "icon") {
-      state.favicon.setAttribute("rel", "icon");
-    }
-    const links = new Set(document.querySelectorAll('link[rel~="icon" i]'));
-    links.add(state.favicon);
-    const attributes = { href: iconUrl, type: "image/svg+xml", sizes: "any", media: "all" };
-    for (const link of links) {
-      for (const [name, value] of Object.entries(attributes)) {
-        if (link.getAttribute(name) !== value) {
-          link.setAttribute(name, value);
-        }
-      }
-    }
-    if (!state.favicon.isConnected) {
-      (document.head || document.documentElement).appendChild(state.favicon);
-    }
-  };
-
-  state.observer = new MutationObserver(applyIcon);
-  state.observer.observe(document.head || document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["rel", "href", "type", "sizes", "media"]
-  });
-  applyIcon();
-  return true;
-}
-
 function updatePostingNumberState(update) {
   const operation = postingNumberUpdateQueue.catch(() => {}).then(async () => {
     const stored = await chrome.storage.session.get(POSTING_SUBMISSION_NUMBERS_STORAGE_KEY);
@@ -1981,25 +1936,6 @@ function updatePostingNumberState(update) {
   return operation;
 }
 
-async function applyPostingNumberIcon(tabId, entry) {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (getUrlComparisonKey(tab.url) !== getUrlComparisonKey(entry.jobUrl) ||
-        saveTitleStatusByTabId.has(tabId)) {
-      return false;
-    }
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: setPostingNumberIconInPage,
-      args: [entry.number]
-    });
-    return results?.[0]?.result === true;
-  } catch (error) {
-    console.info("Could not update the submitted job tab icon:", error);
-    return false;
-  }
-}
-
 async function markPostingSubmission(tabId, jobUrl, runId) {
   try {
     const entry = await updatePostingNumberState((state) => {
@@ -2008,27 +1944,16 @@ async function markPostingSubmission(tabId, jobUrl, runId) {
       state.byTabId[String(tabId)] = { number, jobUrl };
       return { number, jobUrl };
     });
-    const marked = await applyPostingNumberIcon(tabId, entry);
-    sendLog(runId, marked ? "info" : "warning", marked
-      ? `Marked the submitted job tab with number ${entry.number}.`
-      : `URL submitted as number ${entry.number}, but the job-tab icon could not be updated.`);
+    sendLog(runId, "info", `URL submitted as number ${entry.number}.`);
     return entry.number;
   } catch (error) {
-    console.info("Could not number the submitted job tab:", error);
-    sendLog(runId, "warning", "The URL was submitted, but its job-tab number could not be saved.");
+    console.info("Could not record the submission number:", error);
+    sendLog(runId, "warning", "The URL was submitted, but its submission number could not be saved.");
     return null;
   }
 }
 
-async function restorePostingNumberIcon(tabId) {
-  const stored = await chrome.storage.session.get(POSTING_SUBMISSION_NUMBERS_STORAGE_KEY);
-  const entry = stored[POSTING_SUBMISSION_NUMBERS_STORAGE_KEY]?.byTabId?.[String(tabId)];
-  if (entry) {
-    await applyPostingNumberIcon(tabId, entry);
-  }
-}
-
-function forgetPostingNumberIcon(tabId) {
+function forgetPostingSubmission(tabId) {
   return updatePostingNumberState((state) => {
     delete state.byTabId[String(tabId)];
   });
@@ -3258,7 +3183,7 @@ async function playRightmostPostingToAi(runId, options = {}) {
   return sendPlayPostingTabToAi(runId, aiTab, jobTab);
 }
 
-async function sendPlayPostingTabToAi(runId, aiTab, jobTab, { retry = false, numberJobTab = false } = {}) {
+async function sendPlayPostingTabToAi(runId, aiTab, jobTab, { retry = false, trackSubmissionNumber = false } = {}) {
   sendLog(runId, "info", retry
     ? "Retrying the same posting URL now that the chat may be ready..."
     : "Taking the rightmost ungrouped, unpinned tab into Check with AI...");
@@ -3268,7 +3193,7 @@ async function sendPlayPostingTabToAi(runId, aiTab, jobTab, { retry = false, num
     requireUngroupedSource: !retry,
     sourceUrl: jobTab.url
   });
-  const submissionNumber = result.submitted && numberJobTab
+  const submissionNumber = result.submitted && trackSubmissionNumber
     ? await markPostingSubmission(jobTab.id, result.jobUrl, runId)
     : null;
   return { ...result, submissionNumber };
@@ -3386,7 +3311,7 @@ async function runPlayPostingBatchStep() {
 
     const result = await sendPlayPostingTabToAi(state.runId, aiTab, jobTab, {
       retry,
-      numberJobTab: state.tabCount > 1
+      trackSubmissionNumber: state.tabCount > 1
     });
     const completedCount = state.completedCount + (result.submitted ? 1 : 0);
     if (completedCount >= state.tabCount) {
@@ -4279,11 +4204,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       console.info("Could not restore the Save App tab-title status:", error);
     });
   }
-  if (!saveTitleStatus && changeInfo.status === "complete") {
-    restorePostingNumberIcon(tabId).catch((error) => {
-      console.info("Could not restore the submitted job-tab number:", error);
-    });
-  }
 });
 
 configureSidePanelBehavior().catch((error) => {
@@ -4421,7 +4341,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   saveTitleStatusByTabId.delete(tabId);
   clearNoModelProgressForTab(tabId).catch(console.error);
   forgetCheckPostingJob(tabId).catch(console.error);
-  forgetPostingNumberIcon(tabId).catch(console.error);
+  forgetPostingSubmission(tabId).catch(console.error);
   cancelPlayPostingBatch("", { ownerTabId: tabId }).catch(() => {});
 
   const ownedRunIds = [...runOwnerTabIds.entries()]

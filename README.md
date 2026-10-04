@@ -87,14 +87,9 @@ wait. Clicking Play or using its hotkey again stops the remaining batch.
 Waiting batches survive closing the panel and extension-worker restarts; Chrome
 may delay scheduled submissions while the device sleeps. Play finishes early
 if no eligible tabs remain and stops if its chat or pending job changes.
-When Play's tab count is greater than 1, each successful submission gets a
-numbered job-tab icon: 1, 2, 3, and so on in submission order across the current
-Chrome session. Single-tab Play leaves the icon unchanged and does not consume
-a number. Numbers survive job-page reloads and extension-worker restarts. An unsent URL does not
-get a number. Play does not request additional website permissions. The numbered
-icon appears where Chrome already allows page access; otherwise, the submission
-number remains available in the process log. Save App status icons take priority
-during the save process.
+When Play's tab count is greater than 1, successful submissions are numbered
+only in the process log. Play keeps each tab's existing icon and does not
+request additional website permissions.
 If a run stops partway through, completed records and resume copies remain;
 check the sheet before retrying to avoid duplicates.
 
