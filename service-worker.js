@@ -6271,7 +6271,7 @@ async function getGoogleAccessToken(options = {}) {
       const openedSettings = await openGoogleOAuthClientSettings();
       const clientId = chrome.runtime.getManifest().oauth2?.client_id || "unknown";
       const configurationError = new Error(
-        `Google rejected the extension's OAuth client ID: ${clientId}. ` +
+        `Process stopped. Google rejected the extension's OAuth client ID: ${clientId}. ` +
         (openedSettings
           ? "Google Cloud OAuth Clients and Chrome Extensions opened in new tabs. "
           : "Could not open both setup tabs automatically. ") +

@@ -178,7 +178,7 @@ test("the panel sends without permission prompts, enables Play for supported cha
   const calls = [];
   const context = vm.createContext({
     URL, console, playButton: button, activeTabId: 1,
-    areActionButtonsDisabled: false, isCheckPostingRunning: false,
+    areActionButtonsDisabled: false, isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
     isCurrentTabPlayAiChat: true,
     playPostingBatchState: null,
     beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "play" }),
@@ -213,11 +213,82 @@ test("the panel sends without permission prompts, enables Play for supported cha
   assert.equal(button.disabled, false);
   context.isCurrentTabPlayAiChat = false;
   context.updatePlayButtonDisabledState();
-  assert.equal(button.disabled, true);
+  assert.equal(button.disabled, false);
+  assert.match(button.title, /Open the selected AI chat/);
   context.isCurrentTabPlayAiChat = true;
   context.areActionButtonsDisabled = true;
   context.updatePlayButtonDisabledState();
   assert.equal(button.disabled, true);
+});
+
+function outsideAiPanelFixture({ batch = null, sendMessage } = {}) {
+  const attributes = {};
+  const calls = [];
+  const errors = [];
+  const button = { disabled: true, setAttribute: (key, value) => { attributes[key] = value; }, querySelector: () => null };
+  const openButton = { disabled: false, setAttribute() {} };
+  const context = vm.createContext({
+    console: { error() {} }, playButton: button, makeOrOpenAiTabButton: openButton,
+    activeTabId: 1, areActionButtonsDisabled: false,
+    isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
+    isCurrentTabPlayAiChat: false, playPostingBatchState: batch,
+    beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "open-ai" }),
+    updateCheckPostingButtonDisabledState: () => context.updatePlayButtonDisabledState(),
+    addLog() {}, showStatus: (type, message) => errors.push({ type, message }),
+    chrome: { runtime: { sendMessage: async (message) => {
+      calls.push(message);
+      return sendMessage ? sendMessage(message) : { ok: true };
+    } } }
+  });
+  load(panel, ["updatePlayButtonDisabledState", "updateMakeOrOpenAiTabButtonDisabledState",
+    "makeOrOpenSelectedAiTab", "playRightmostPosting"], context);
+  context.updateMakeOrOpenAiTabButtonDisabledState();
+  return { context, button, openButton, attributes, calls, errors };
+}
+
+test("Play outside an AI URL uses the open-selected-chat action and prevents duplicate opens", async () => {
+  for (const batch of [null, { ownerTabId: 9, completedCount: 1, tabCount: 2 }]) {
+    let finish;
+    const { context, button, openButton, attributes, calls } = outsideAiPanelFixture({
+      batch, sendMessage: () => new Promise((resolve) => { finish = resolve; })
+    });
+    assert.equal(button.disabled, false);
+    assert.equal(attributes["aria-label"], "Open selected AI chat");
+    assert.match(button.title, /Open the selected AI chat, or create it if it is not open/);
+    const running = context.playRightmostPosting();
+    assert.equal(button.disabled, true);
+    assert.equal(openButton.disabled, true);
+    assert.equal(context.isMakeOrOpenAiTabRunning, true);
+    context.activeTabId = 99;
+    await context.playRightmostPosting();
+    await context.makeOrOpenSelectedAiTab();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].type, "MAKE_OR_OPEN_CHECK_POSTING_AI_TAB");
+    assert.equal(calls[0].ownerTabId, 1);
+    finish({ ok: true });
+    await running;
+    assert.equal(context.isMakeOrOpenAiTabRunning, false);
+    assert.equal(button.disabled, false);
+    assert.equal(openButton.disabled, false);
+  }
+});
+
+test("Play outside an AI URL preserves the shared open error and action locks", async () => {
+  const { context, button, openButton, calls, errors } = outsideAiPanelFixture({
+    sendMessage: async () => ({ ok: false, error: "Could not open the selected chat." })
+  });
+  await context.playRightmostPosting();
+  assert.equal(calls.length, 1);
+  assert.equal(errors[0].type, "error");
+  assert.equal(errors[0].message, "Could not open the selected chat.");
+  assert.equal(button.disabled, false);
+  assert.equal(openButton.disabled, false);
+  context.areActionButtonsDisabled = true;
+  context.updateMakeOrOpenAiTabButtonDisabledState();
+  assert.equal(button.disabled, true);
+  assert.equal(openButton.disabled, true);
+  await context.playRightmostPosting();
+  assert.equal(calls.length, 1);
 });
 
 test("ChatGPT submits an idle prompt and leaves a responding chat's URL unsent", async () => {
@@ -451,7 +522,7 @@ test("the Play button becomes Stop on its owning chat and is disabled in another
   const messages = [];
   const context = vm.createContext({
     console, playButton: button, activeTabId: 1, areActionButtonsDisabled: true,
-    isCheckPostingRunning: false, isCurrentTabPlayAiChat: true,
+    isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false, isCurrentTabPlayAiChat: true,
     playPostingBatchState: { ownerTabId: 1, completedCount: 2, tabCount: 5 },
     updateCheckPostingButtonDisabledState: () => context.updatePlayButtonDisabledState(),
     beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "stop" }),

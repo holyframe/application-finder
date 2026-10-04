@@ -208,20 +208,26 @@ test("copy failure retains saved profiles and marks remaining ones as not starte
   assert.equal(cleanup[0].resetInputs, false);
 });
 
-test("an OAuth failure before the first save reports that no applications were saved", async () => {
-  const { ctx, run, rows, copies, storage } = fixture();
+test("an OAuth failure before the first save ends the process without saving applications", async () => {
+  const { ctx, run, rows, copies, storage, cleanup } = fixture();
   const authError = new Error("Google rejected the OAuth client. Fix the client Item ID and retry.");
-  ctx.getGoogleAccessToken = async () => { throw authError; };
+  let authCalls = 0;
+  ctx.getGoogleAccessToken = async () => { authCalls++; throw authError; };
   await assert.rejects(run(), authError);
   assert.equal(rows.length, 0);
   assert.equal(copies.length, 0);
   assert.match(storage.progress[7].error, /Fix the client Item ID/);
   assert.match(storage.progress[7].error, /No applications were saved in this run/);
   assert.doesNotMatch(storage.progress[7].error, /already saved/);
+  assert.equal(authCalls, 1);
+  assert.equal(storage.progress[7].status, "failed");
+  assert.deepEqual(storage.progress[7].profiles.map((profile) => profile.status), ["failed", "skipped", "skipped"]);
+  assert.equal(cleanup.length, 1);
+  assert.equal(cleanup[0].reason, "failed");
 });
 
 test("an OAuth failure after a saved profile reports the completed application count", async () => {
-  const { ctx, run, rows, storage } = fixture();
+  const { ctx, run, rows, storage, copies, cleanup } = fixture();
   let authCalls = 0;
   ctx.getGoogleAccessToken = async () => {
     if (authCalls++ === 1) throw new Error("Google rejected the OAuth client.");
@@ -232,6 +238,10 @@ test("an OAuth failure after a saved profile reports the completed application c
   assert.match(storage.progress[7].error, /1 application was already saved/);
   assert.match(storage.progress[7].error, /Check the sheet before retrying/);
   assert.deepEqual(storage.progress[7].profiles.map((profile) => profile.status), ["saved", "failed", "skipped"]);
+  assert.equal(authCalls, 2);
+  assert.equal(copies.length, 1);
+  assert.equal(cleanup.length, 1);
+  assert.equal(cleanup[0].reason, "failed");
 });
 test("sheet failure keeps the resume link and does not mark its row saved", async () => {
   const { run, storage } = fixture({ failSheet: 0 });

@@ -123,6 +123,7 @@ for (const authError of [
     await assert.rejects(context.getGoogleAccessToken(), (error) => {
       assert.equal(error.code, "GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED");
       assert.equal(error.cause, authError);
+      assert.match(error.message, /^Process stopped\./);
       assert.match(error.message, /opened in new tabs/);
       assert.match(error.message, /test-client\.apps\.googleusercontent\.com/);
       assert.match(error.message, /type Chrome Extension/);

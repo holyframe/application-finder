@@ -315,6 +315,7 @@ const PROMPT_RESUME_SELECTION_STORAGE_KEY = "promptResumeSelection";
 const JOB_DESCRIPTION_SELECTION_STORAGE_KEY = "jobDescriptionSelection";
 const SAVE_POST_PROCESS_STORAGE_KEY = "savePostProcess";
 const SAVE_PROCESS_BUSY_CODE = "SAVE_PROCESS_BUSY";
+const GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED_CODE = "GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED";
 const DEFAULT_AI_PROVIDER_ID = "chatgpt";
 const NO_MODEL_PROGRESS_STORAGE_KEY = "noModelSaveProgressByTabId";
 let configuredAiProviderId = DEFAULT_AI_PROVIDER_ID;
@@ -2297,18 +2298,19 @@ function updatePlayButtonDisabledState() {
   }
   const ownsBatch = playPostingBatchState?.ownerTabId === activeTabId;
   const isDisabled = isCheckPostingRunning || (!ownsBatch && (
-    areActionButtonsDisabled || !isCurrentTabPlayAiChat || Boolean(playPostingBatchState)
+    areActionButtonsDisabled || isMakeOrOpenAiTabRunning ||
+    (isCurrentTabPlayAiChat && Boolean(playPostingBatchState))
   ));
   playButton.disabled = isDisabled;
   playButton.setAttribute("aria-disabled", String(isDisabled));
-  playButton.setAttribute("aria-label", ownsBatch ? "Stop Play" : "Play");
+  playButton.setAttribute("aria-label", ownsBatch ? "Stop Play"
+    : isCurrentTabPlayAiChat ? "Play" : "Open selected AI chat");
   playButton.querySelector("path")?.setAttribute("d", ownsBatch ? "M7 7h10v10H7z" : "m8 5 11 7-11 7z");
   playButton.title = ownsBatch
     ? `Stop Play (${playPostingBatchState.completedCount}/${playPostingBatchState.tabCount} sent)`
+    : !isCurrentTabPlayAiChat ? "Open the selected AI chat, or create it if it is not open"
     : playPostingBatchState ? "Play is running in another AI chat tab"
-    : isCurrentTabPlayAiChat
-    ? "Send the rightmost ungrouped, unpinned tab URL to this AI chat"
-    : "Play is available on an unpinned AI chat tab";
+    : "Send the rightmost ungrouped, unpinned tab URL to this AI chat";
 }
 
 async function loadPlayPostingBatchState() {
@@ -2318,6 +2320,7 @@ async function loadPlayPostingBatchState() {
 }
 
 function updateMakeOrOpenAiTabButtonDisabledState() {
+  updatePlayButtonDisabledState();
   if (!makeOrOpenAiTabButton) {
     return;
   }
@@ -2742,6 +2745,11 @@ async function checkCurrentPosting() {
 async function playRightmostPosting() {
   const ownsBatch = playPostingBatchState?.ownerTabId === activeTabId;
   if (playButton?.disabled || isCheckPostingRunning || (!ownsBatch && areActionButtonsDisabled)) {
+    return;
+  }
+
+  if (!ownsBatch && !isCurrentTabPlayAiChat) {
+    await makeOrOpenSelectedAiTab();
     return;
   }
 
@@ -4994,6 +5002,24 @@ function finishButtonProcessForTab(tabId) {
   setSaveButtonsDisabledForTab(tabId, false);
 }
 
+function endSaveProcessAfterOAuthError(runId, ownerTabId) {
+  resolveSavePostProcessTargetTabIds({ runId }, ownerTabId).forEach((tabId) => {
+    const state = isActiveTab(tabId)
+      ? { runId: activeRunId, savePostProcessState }
+      : getTabState(tabId);
+    // A delayed error from an older run must not stop a newer run on this tab.
+    if (
+      (state?.runId && state.runId !== runId) ||
+      (state?.savePostProcessState?.runId && state.savePostProcessState.runId !== runId)
+    ) {
+      return;
+    }
+    setSavePostProcessStateForTab(tabId, null);
+    setSavePostProcessRequestPendingForTab(tabId, false);
+    finishButtonProcessForTab(tabId);
+  });
+}
+
 function updateDeletedRowsState() {
   if (!deletedRowsCard || !deletedRowsList || !emptyDeletedRows) return;
 
@@ -5223,6 +5249,9 @@ async function runCurrentAppActionOnce() {
         error.message || "Something went wrong."
       );
       showSaveCompletionToast(false, error.message);
+      if (error.code === GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED_CODE) {
+        endSaveProcessAfterOAuthError(runId, ownerTabId);
+      }
     }
   } finally {
     if (!preserveButtonLock) {
@@ -5469,6 +5498,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       finishButtonProcessForTab(tabId);
     });
     showSaveCompletionToast(message.ok, message.error);
+    if (message.code === GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED_CODE) {
+      endSaveProcessAfterOAuthError(message.runId, message.ownerTabId);
+    }
     return;
   }
 

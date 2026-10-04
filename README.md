@@ -73,8 +73,9 @@ selected AI chat's window before the job joins it.
 `Make or open AI tab` opens that selected chat, or creates it when it is not
 already open, then moves its entire `Check with AI` group to the right end of
 that Chrome window. Pinned tabs are left in place.
-The Play icon beside `Check posting` is available on an unpinned ChatGPT,
-Copilot chat, Perplexity, or DeepSeek tab. It selects the rightmost other tab
+On other pages, the Play icon beside `Check posting` opens the selected AI chat,
+or creates it if it is not open, just like `Make or open AI tab`.
+On an unpinned ChatGPT, Copilot chat, Perplexity, or DeepSeek tab, Play selects the rightmost other tab
 in that same Chrome window that is neither grouped nor pinned, moves it into
 `Check with AI` beside the current chat, and sends its URL to that chat using
 the Check posting process. In Check posting settings, set Play's number of tabs
@@ -319,7 +320,9 @@ Select the correct Google Cloud project and confirm the client is a Chrome
 Extension client whose Item ID matches that extension ID. If the client is
 missing or has the wrong type, create a Chrome Extension client with the matching
 Item ID and update `oauth2.client_id` in `manifest.json` with the new client ID.
-Reload the extension and retry. Failed No Model saves report whether no
+The current process stops after reporting the error; remaining profiles are
+skipped and the run controls are released. Fix the configuration, reload the
+extension, and start a new run. Failed No Model saves report whether no
 applications were saved or how many applications were already saved.
 
 ## Load in Chrome
