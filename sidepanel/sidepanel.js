@@ -9,7 +9,6 @@ const playPostingHotkeyValue = document.querySelector("#playPostingHotkeyValue")
 const playPostingAssignHotkeyButton = document.querySelector("#playPostingAssignHotkeyButton");
 const PLAY_POSTING_BATCH_STORAGE_KEY = "playPostingBatch";
 let playPostingBatchState = null;
-const makeOrOpenAiTabButton = document.querySelector("#makeOrOpenAiTabButton");
 const checkPostingOptionsButton = document.querySelector("#checkPostingOptionsButton");
 const checkPostingAutoNextTabInput = document.querySelector("#checkPostingAutoNextTabInput");
 const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek"];
@@ -2319,19 +2318,6 @@ async function loadPlayPostingBatchState() {
   updateCheckPostingButtonDisabledState();
 }
 
-function updateMakeOrOpenAiTabButtonDisabledState() {
-  updatePlayButtonDisabledState();
-  if (!makeOrOpenAiTabButton) {
-    return;
-  }
-
-  const isDisabled = areActionButtonsDisabled || isMakeOrOpenAiTabRunning;
-  makeOrOpenAiTabButton.disabled = isDisabled;
-  makeOrOpenAiTabButton.setAttribute("aria-disabled", String(isDisabled));
-  makeOrOpenAiTabButton.title =
-    "Open the selected AI chat, or create it if it is not open";
-}
-
 function updateJobrightOpenControlsDisabledState() {
   const isDisabled =
     areActionButtonsDisabled || isJobrightOpening || !isCurrentTabJobright;
@@ -2379,7 +2365,6 @@ async function refreshCurrentTabActionAvailability() {
 
   updateJobrightOpenControlsDisabledState();
   updateCheckPostingButtonDisabledState();
-  updateMakeOrOpenAiTabButtonDisabledState();
   updateSaveButtonDisabledState();
 }
 
@@ -2389,7 +2374,6 @@ function setSaveButtonsDisabled(disabled) {
   updateSaveButtonDisabledState();
   updateJobrightOpenControlsDisabledState();
   updateCheckPostingButtonDisabledState();
-  updateMakeOrOpenAiTabButtonDisabledState();
   updateSaveWorkspaceActions();
   renderSavePostProcessControls();
   if (saveConfigButton) saveConfigButton.disabled = disabled;
@@ -2678,12 +2662,12 @@ async function saveCheckPostingSettings() {
 }
 
 async function makeOrOpenSelectedAiTab() {
-  if (makeOrOpenAiTabButton?.disabled || isMakeOrOpenAiTabRunning) {
+  if (areActionButtonsDisabled || isMakeOrOpenAiTabRunning) {
     return;
   }
 
   isMakeOrOpenAiTabRunning = true;
-  updateMakeOrOpenAiTabButtonDisabledState();
+  updatePlayButtonDisabledState();
 
   try {
     const { ownerTabId, runId } = beginRunForTab(activeTabId);
@@ -2701,7 +2685,7 @@ async function makeOrOpenSelectedAiTab() {
     showStatus("error", error.message || "Could not open the AI tab.");
   } finally {
     isMakeOrOpenAiTabRunning = false;
-    updateMakeOrOpenAiTabButtonDisabledState();
+    updatePlayButtonDisabledState();
   }
 }
 
@@ -8531,7 +8515,6 @@ openGoogleSheetButton?.addEventListener("click", openConfiguredGoogleSheet);
 checkPostingButton?.addEventListener("click", checkCurrentPosting);
 playButton?.addEventListener("click", playRightmostPosting);
 playPostingAssignHotkeyButton?.addEventListener("click", openChromeShortcutSettings);
-makeOrOpenAiTabButton?.addEventListener("click", makeOrOpenSelectedAiTab);
 document.querySelectorAll("[data-check-posting-url]").forEach((input) => {
   input.addEventListener("focus", () => {
     const provider = document.querySelector(

@@ -70,11 +70,9 @@ job tab moves into a separate `Saving to Docs` group to the right of the
 selected AI chat. Additional Save App tabs reuse the existing group instead of
 creating another one. If that group is in another window, it moves to the
 selected AI chat's window before the job joins it.
-`Make or open AI tab` opens that selected chat, or creates it when it is not
-already open, then moves its entire `Check with AI` group to the right end of
-that Chrome window. Pinned tabs are left in place.
 On other pages, the Play icon beside `Check posting` opens the selected AI chat,
-or creates it if it is not open, just like `Make or open AI tab`.
+or creates it if it is not open, then moves its entire `Check with AI` group to
+the right end of that Chrome window. Pinned tabs are left in place.
 On an unpinned ChatGPT, Copilot chat, Perplexity, or DeepSeek tab, Play selects the rightmost other tab
 in that same Chrome window that is neither grouped nor pinned, moves it into
 `Check with AI` beside the current chat, and sends its URL to that chat using

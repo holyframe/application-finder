@@ -57,10 +57,9 @@ test("Check posting opens Copilot and sends the current tab URL", () => {
   assert.ok(settingsIndex > 0 && settingsIndex < sheetIndex);
   assert.ok(sheetIndex < profilesIndex);
   assert.match(html, />Check posting</);
-  assert.match(html, /id="makeOrOpenAiTabButton"/);
-  assert.match(html, /aria-label="Make or open AI tab"/);
-  const makeOrOpenAiIndex = html.indexOf('id="makeOrOpenAiTabButton"');
-  assert.ok(makeOrOpenAiIndex < checkIndex);
+  assert.doesNotMatch(html, /id="makeOrOpenAiTabButton"/);
+  assert.ok(settingsIndex < html.indexOf('id="playButton"'));
+  assert.ok(html.indexOf('id="playButton"') < sheetIndex);
   assert.match(html, /aria-label="Check posting settings"/);
   assert.match(html, /id="checkPostingActionSettingsModal"/);
   assert.match(html, /id="checkPostingUrl-copilot"/);

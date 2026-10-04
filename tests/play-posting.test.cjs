@@ -226,9 +226,8 @@ function outsideAiPanelFixture({ batch = null, sendMessage } = {}) {
   const calls = [];
   const errors = [];
   const button = { disabled: true, setAttribute: (key, value) => { attributes[key] = value; }, querySelector: () => null };
-  const openButton = { disabled: false, setAttribute() {} };
   const context = vm.createContext({
-    console: { error() {} }, playButton: button, makeOrOpenAiTabButton: openButton,
+    console: { error() {} }, playButton: button,
     activeTabId: 1, areActionButtonsDisabled: false,
     isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
     isCurrentTabPlayAiChat: false, playPostingBatchState: batch,
@@ -240,16 +239,16 @@ function outsideAiPanelFixture({ batch = null, sendMessage } = {}) {
       return sendMessage ? sendMessage(message) : { ok: true };
     } } }
   });
-  load(panel, ["updatePlayButtonDisabledState", "updateMakeOrOpenAiTabButtonDisabledState",
+  load(panel, ["updatePlayButtonDisabledState",
     "makeOrOpenSelectedAiTab", "playRightmostPosting"], context);
-  context.updateMakeOrOpenAiTabButtonDisabledState();
-  return { context, button, openButton, attributes, calls, errors };
+  context.updatePlayButtonDisabledState();
+  return { context, button, attributes, calls, errors };
 }
 
 test("Play outside an AI URL uses the open-selected-chat action and prevents duplicate opens", async () => {
   for (const batch of [null, { ownerTabId: 9, completedCount: 1, tabCount: 2 }]) {
     let finish;
-    const { context, button, openButton, attributes, calls } = outsideAiPanelFixture({
+    const { context, button, attributes, calls } = outsideAiPanelFixture({
       batch, sendMessage: () => new Promise((resolve) => { finish = resolve; })
     });
     assert.equal(button.disabled, false);
@@ -257,7 +256,6 @@ test("Play outside an AI URL uses the open-selected-chat action and prevents dup
     assert.match(button.title, /Open the selected AI chat, or create it if it is not open/);
     const running = context.playRightmostPosting();
     assert.equal(button.disabled, true);
-    assert.equal(openButton.disabled, true);
     assert.equal(context.isMakeOrOpenAiTabRunning, true);
     context.activeTabId = 99;
     await context.playRightmostPosting();
@@ -269,12 +267,11 @@ test("Play outside an AI URL uses the open-selected-chat action and prevents dup
     await running;
     assert.equal(context.isMakeOrOpenAiTabRunning, false);
     assert.equal(button.disabled, false);
-    assert.equal(openButton.disabled, false);
   }
 });
 
 test("Play outside an AI URL preserves the shared open error and action locks", async () => {
-  const { context, button, openButton, calls, errors } = outsideAiPanelFixture({
+  const { context, button, calls, errors } = outsideAiPanelFixture({
     sendMessage: async () => ({ ok: false, error: "Could not open the selected chat." })
   });
   await context.playRightmostPosting();
@@ -282,11 +279,9 @@ test("Play outside an AI URL preserves the shared open error and action locks", 
   assert.equal(errors[0].type, "error");
   assert.equal(errors[0].message, "Could not open the selected chat.");
   assert.equal(button.disabled, false);
-  assert.equal(openButton.disabled, false);
   context.areActionButtonsDisabled = true;
-  context.updateMakeOrOpenAiTabButtonDisabledState();
+  context.updatePlayButtonDisabledState();
   assert.equal(button.disabled, true);
-  assert.equal(openButton.disabled, true);
   await context.playRightmostPosting();
   assert.equal(calls.length, 1);
 });
