@@ -312,6 +312,15 @@ Google authorization uses `chrome.identity` and the OAuth configuration in
 spreadsheet and resume-template documents. If Chrome browser sign-in has been
 turned off, a Google action opens Chrome's sign-in settings; turn sign-in back
 on, sign in to Google, and retry the action.
+If Google rejects the OAuth client with a `bad client id` error, the extension
+opens Google Cloud OAuth Clients and `chrome://extensions` in new background
+tabs. The error includes the configured client ID and installed extension ID.
+Select the correct Google Cloud project and confirm the client is a Chrome
+Extension client whose Item ID matches that extension ID. If the client is
+missing or has the wrong type, create a Chrome Extension client with the matching
+Item ID and update `oauth2.client_id` in `manifest.json` with the new client ID.
+Reload the extension and retry. Failed No Model saves report whether no
+applications were saved or how many applications were already saved.
 
 ## Load in Chrome
 

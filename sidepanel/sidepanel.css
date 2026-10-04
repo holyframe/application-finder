@@ -645,7 +645,7 @@ h1 {
 
 .home-sheet-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--button-height);
+  grid-template-columns: var(--button-height) minmax(0, 1fr) var(--button-height);
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -660,6 +660,7 @@ h1 {
   background: rgba(255, 255, 255, 0.76);
 }
 
+.home-sheet-actions .make-or-open-ai-tab-button,
 .home-sheet-actions .home-play-button {
   width: var(--button-height);
   margin: 0;
@@ -671,18 +672,19 @@ h1 {
   fill: currentColor;
 }
 
+.make-or-open-ai-tab-button:focus-visible,
 .home-play-button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
+.home-sheet-actions .make-or-open-ai-tab-button:disabled,
 .home-sheet-actions .home-play-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
   transform: none;
 }
 
-.home-sheet-actions .make-or-open-ai-tab-button,
 .home-sheet-actions .global-open-google-sheet-button {
   grid-column: 1 / -1;
 }

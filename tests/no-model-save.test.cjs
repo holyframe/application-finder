@@ -207,6 +207,32 @@ test("copy failure retains saved profiles and marks remaining ones as not starte
   assert.deepEqual(storage.progress[7].profiles.map((profile) => profile.status), ["saved", "failed", "skipped"]);
   assert.equal(cleanup[0].resetInputs, false);
 });
+
+test("an OAuth failure before the first save reports that no applications were saved", async () => {
+  const { ctx, run, rows, copies, storage } = fixture();
+  const authError = new Error("Google rejected the OAuth client. Fix the client Item ID and retry.");
+  ctx.getGoogleAccessToken = async () => { throw authError; };
+  await assert.rejects(run(), authError);
+  assert.equal(rows.length, 0);
+  assert.equal(copies.length, 0);
+  assert.match(storage.progress[7].error, /Fix the client Item ID/);
+  assert.match(storage.progress[7].error, /No applications were saved in this run/);
+  assert.doesNotMatch(storage.progress[7].error, /already saved/);
+});
+
+test("an OAuth failure after a saved profile reports the completed application count", async () => {
+  const { ctx, run, rows, storage } = fixture();
+  let authCalls = 0;
+  ctx.getGoogleAccessToken = async () => {
+    if (authCalls++ === 1) throw new Error("Google rejected the OAuth client.");
+    return "fake-token";
+  };
+  await assert.rejects(run(), /Google rejected the OAuth client/);
+  assert.equal(rows.length, 1);
+  assert.match(storage.progress[7].error, /1 application was already saved/);
+  assert.match(storage.progress[7].error, /Check the sheet before retrying/);
+  assert.deepEqual(storage.progress[7].profiles.map((profile) => profile.status), ["saved", "failed", "skipped"]);
+});
 test("sheet failure keeps the resume link and does not mark its row saved", async () => {
   const { run, storage } = fixture({ failSheet: 0 });
   await assert.rejects(run(), /Sheet failed/);

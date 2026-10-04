@@ -127,6 +127,9 @@ const SAVE_PROCESS_CANCELLED_CODE = "SAVE_PROCESS_CANCELLED";
 const SAVE_PROCESS_BUSY_CODE = "SAVE_PROCESS_BUSY";
 const GOOGLE_BROWSER_SIGNIN_REQUIRED_CODE = "GOOGLE_BROWSER_SIGNIN_REQUIRED";
 const CHROME_SIGNIN_SETTINGS_URL = "chrome://settings/people";
+const GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED_CODE = "GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED";
+const GOOGLE_OAUTH_CLIENTS_URL = "https://console.cloud.google.com/auth/clients";
+const CHROME_EXTENSIONS_SETTINGS_URL = "chrome://extensions";
 const PROFILE_SELECTION_VERSION = 4;
 const GOOGLE_DOC_WRITABLE_TEXT_STYLE_FIELDS = Object.freeze([
   "backgroundColor",
@@ -5092,8 +5095,10 @@ async function runNoModelSave(tab, validation, runId, ownerTabId) {
   } catch (error) {
     const cancelled = isSaveProcessCancelledError(error);
     report.status = cancelled ? "cancelled" : "failed";
-    report.error = cancelled ? "Save cancelled. Completed records are kept." :
-      `${error.message || error} Completed records are kept; check the sheet before retrying.`;
+    const savedRecordsMessage = results.length === 0
+      ? "No applications were saved in this run."
+      : `${results.length} application${results.length === 1 ? " was" : "s were"} already saved. Check the sheet before retrying.`;
+    report.error = `${cancelled ? "Save cancelled." : error.message || error} ${savedRecordsMessage}`;
     report.profiles.forEach((profile) => {
       if (profile.status === "running") {
         profile.status = report.status;
@@ -6225,6 +6230,23 @@ function isGoogleBrowserSigninDisabledError(error) {
     .includes("turned off browser signin");
 }
 
+function isGoogleOAuthBadClientIdError(error) {
+  return /\bbad client id\b/i.test(String(error?.message || error || ""));
+}
+
+async function openGoogleOAuthClientSettings() {
+  const urls = [GOOGLE_OAUTH_CLIENTS_URL, CHROME_EXTENSIONS_SETTINGS_URL];
+  const results = await Promise.allSettled(
+    urls.map((url) => chrome.tabs.create({ url, active: false }))
+  );
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(`Could not open OAuth setup page ${urls[index]}:`, result.reason);
+    }
+  });
+  return results.every((result) => result.status === "fulfilled");
+}
+
 async function directUserToChromeSignin() {
   try {
     await chrome.tabs.create({
@@ -6245,6 +6267,25 @@ async function getGoogleAccessToken(options = {}) {
       interactive: options.interactive ?? true
     });
   } catch (error) {
+    if (isGoogleOAuthBadClientIdError(error)) {
+      const openedSettings = await openGoogleOAuthClientSettings();
+      const clientId = chrome.runtime.getManifest().oauth2?.client_id || "unknown";
+      const configurationError = new Error(
+        `Google rejected the extension's OAuth client ID: ${clientId}. ` +
+        (openedSettings
+          ? "Google Cloud OAuth Clients and Chrome Extensions opened in new tabs. "
+          : "Could not open both setup tabs automatically. ") +
+        `At ${GOOGLE_OAUTH_CLIENTS_URL}, select the correct Google Cloud project. ` +
+        `The OAuth client must have type Chrome Extension and its Item ID must match the installed extension ID: ${chrome.runtime.id}. ` +
+        `Confirm this ID at ${CHROME_EXTENSIONS_SETTINGS_URL} with Developer mode enabled. ` +
+        "If the client is missing or has the wrong type, create a Chrome Extension client with this Item ID. " +
+        "If you create a replacement client, update oauth2.client_id in manifest.json with its new client ID. Reload the extension and retry.",
+        { cause: error }
+      );
+      configurationError.code = GOOGLE_OAUTH_CLIENT_CONFIGURATION_REQUIRED_CODE;
+      throw configurationError;
+    }
+
     if (!isGoogleBrowserSigninDisabledError(error)) {
       throw error;
     }
