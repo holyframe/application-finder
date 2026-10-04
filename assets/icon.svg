@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <title>application-finder</title>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#5457ff" />
+  <rect x="28" y="25" width="51" height="74" rx="7" stroke="#fff" stroke-width="7" />
+  <path d="M41 44h25M41 57h18M41 70h10" stroke="#fff" stroke-width="6" stroke-linecap="round" />
+  <circle cx="78" cy="76" r="18" fill="#5457ff" stroke="#fff" stroke-width="7" />
+  <path d="m91 89 13 13" stroke="#fff" stroke-width="9" stroke-linecap="round" />
+</svg>
