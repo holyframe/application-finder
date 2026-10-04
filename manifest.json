@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "application-finder",
   "description": "A Chrome extension that opens a partial-width UI and saves the current tab URL to Google Sheets.",
-  "version": "1.0.37",
+  "version": "1.0.35",
   "permissions": ["sidePanel", "activeTab", "storage", "identity", "tabs", "tabGroups", "scripting", "alarms", "downloads", "clipboardWrite"],
   "host_permissions": [
     "https://chatgpt.com/*",
@@ -67,7 +67,7 @@
     }
   ],
   "oauth2": {
-    "client_id": "1087409152703-hvi25ibge9k1rg16sqb9f1vekhpe2keg.apps.googleusercontent.com",
+    "client_id": "1087409152703-2ljqsg4edj44oa4d509ika2gcrdan1vg.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/documents",
