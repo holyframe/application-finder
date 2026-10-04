@@ -105,8 +105,12 @@
       <section class="card prompt-resume-selection-card">
         <div class="application-actions-grid">
           <div class="application-save-section">
-            <div class="application-action-buttons">
-              <div class="action-control-group">
+            <div class="home-sheet-actions home-save-actions">
+              <div
+                class="action-control-group"
+                role="group"
+                aria-label="Save App"
+              >
                 <button
                   id="saveButton"
                   type="button"
@@ -143,45 +147,59 @@
               </div>
             </div>
           </div>
-
           <div class="jobright-open-section">
-            <div
-              class="jobright-open-controls action-control-group"
-              role="group"
-              aria-label="Open Jobright applications"
-            >
-              <button
-                id="openJobrightJobsButton"
-                type="button"
-                class="jobright-open-button"
+            <div class="home-sheet-actions home-jobright-actions">
+              <div
+                class="action-control-group home-sheet-action-group"
+                role="group"
                 aria-label="Open Jobright applications"
-                disabled
-                title="Open is available only on Jobright Recommendations."
               >
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M7 17 17 7" />
-                    <path d="M9 7h8v8" />
-                    <path d="M17 13v6H5V7h6" />
+                <button
+                  id="openJobrightJobsButton"
+                  type="button"
+                  class="secondary-button home-action-main-button"
+                  aria-label="Open Jobright applications"
+                  disabled
+                  title="Open is available only on Jobright Recommendations."
+                >
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M7 17 17 7" />
+                      <path d="M9 7h8v8" />
+                      <path d="M17 13v6H5V7h6" />
+                    </svg>
+                  </span>
+                  <span>Open Jobright</span>
+                </button>
+                <button
+                  id="openJobrightOptionsButton"
+                  type="button"
+                  class="action-settings-button"
+                  aria-label="Jobright settings"
+                  title="Jobright settings"
+                  aria-controls="openActionSettingsModal"
+                  aria-haspopup="dialog"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h9" />
+                    <circle cx="16" cy="7" r="2" />
+                    <path d="M18 7h2" />
+                    <path d="M4 17h2" />
+                    <circle cx="9" cy="17" r="2" />
+                    <path d="M11 17h9" />
                   </svg>
-                </span>
-              </button>
+                </button>
+              </div>
               <button
-                id="openJobrightOptionsButton"
+                id="jobrightPlayButton"
                 type="button"
-                class="action-settings-button"
-                aria-label="Open settings"
-                title="Open settings"
-                aria-controls="openActionSettingsModal"
-                aria-haspopup="dialog"
+                class="secondary-button home-play-button"
+                aria-label="Play Jobright"
+                title="Open is available only on Jobright Recommendations."
+                disabled
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 7h9" />
-                  <circle cx="16" cy="7" r="2" />
-                  <path d="M18 7h2" />
-                  <path d="M4 17h2" />
-                  <circle cx="9" cy="17" r="2" />
-                  <path d="M11 17h9" />
+                  <path d="m8 5 11 7-11 7z" />
                 </svg>
               </button>
             </div>
@@ -197,7 +215,7 @@
             <button
               id="checkPostingButton"
               type="button"
-              class="secondary-button check-posting-button"
+              class="secondary-button check-posting-button home-action-main-button"
               title="Send this posting URL to the selected AI chat"
             >
               <span class="button-icon" aria-hidden="true">

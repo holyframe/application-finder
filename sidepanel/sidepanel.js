@@ -14,6 +14,7 @@ const checkPostingAutoNextTabInput = document.querySelector("#checkPostingAutoNe
 const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek"];
 const jobrightOpenCountInput = document.querySelector("#jobrightOpenCountInput");
 const openJobrightJobsButton = document.querySelector("#openJobrightJobsButton");
+const jobrightPlayButton = document.querySelector("#jobrightPlayButton");
 const openJobrightOptionsButton = document.querySelector("#openJobrightOptionsButton");
 const saveWorkspaceDownloadOptionsButton = document.querySelector(
   "#saveWorkspaceDownloadOptionsButton"
@@ -2332,6 +2333,13 @@ function updateJobrightOpenControlsDisabledState() {
   openJobrightJobsButton.title = isCurrentTabJobright
     ? "Open Jobright applications"
     : "Open is available only on Jobright Recommendations.";
+  if (jobrightPlayButton) {
+    jobrightPlayButton.disabled = isDisabled;
+    jobrightPlayButton.setAttribute("aria-disabled", String(isDisabled));
+    jobrightPlayButton.title = isDisabled
+      ? openJobrightJobsButton.title
+      : "Open the selected number of Jobright applications";
+  }
 }
 
 async function refreshCurrentTabActionAvailability() {
@@ -8280,6 +8288,7 @@ function markSaveWorkspaceReady({
 
 saveButton?.addEventListener("click", saveCurrentTabUrlFromClick);
 openJobrightJobsButton?.addEventListener("click", openJobrightJobs);
+jobrightPlayButton?.addEventListener("click", openJobrightJobs);
 
 Object.entries(actionSettingsDialogs).forEach(([action, dialog]) => {
   dialog.trigger?.addEventListener("click", () =>

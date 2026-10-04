@@ -636,10 +636,9 @@ h1 {
 
 .application-actions-grid {
   display: grid;
-  grid-template-columns: repeat(3, max-content);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -650,6 +649,18 @@ h1 {
   gap: 6px;
   width: 100%;
   margin-top: 8px;
+}
+
+.home-save-actions,
+.home-jobright-actions,
+.prompt-resume-selection-card > .home-sheet-actions {
+  margin-top: 0;
+}
+
+.home-save-actions {
+  grid-template-columns: max-content;
+  width: max-content;
+  justify-self: center;
 }
 
 .home-sheet-actions .home-sheet-action-group {
@@ -691,7 +702,7 @@ h1 {
   border-color: rgba(84, 87, 255, 0.42);
 }
 
-.home-sheet-action-group .check-posting-button {
+.home-sheet-action-group .home-action-main-button {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -703,8 +714,8 @@ h1 {
   box-shadow: none;
 }
 
-.home-sheet-action-group .check-posting-button:hover,
-.home-sheet-action-group .check-posting-button:active {
+.home-sheet-action-group .home-action-main-button:hover,
+.home-sheet-action-group .home-action-main-button:active {
   transform: none;
   background: rgba(84, 87, 255, 0.08);
   border-color: transparent;
@@ -764,13 +775,13 @@ h1 {
   cursor: pointer;
 }
 
-.check-posting-button,
+.home-action-main-button,
 .global-open-google-sheet-button {
   width: 100%;
   margin-top: 0;
 }
 
-.check-posting-button:disabled,
+.home-action-main-button:disabled,
 .global-open-google-sheet-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
@@ -806,12 +817,6 @@ h1 {
   box-shadow: 0 0 0 3px rgba(105, 114, 145, 0.1);
 }
 
-.jobright-open-controls {
-  grid-template-columns: repeat(2, 30px);
-}
-
-
-.jobright-open-button,
 .action-settings-button {
   display: grid;
   place-items: center;
@@ -825,33 +830,25 @@ h1 {
   background: transparent;
 }
 
-.jobright-open-button {
-  border-radius: 999px 0 0 999px;
-}
-
 .action-settings-button {
   border-left: 1px solid var(--line);
   border-radius: 0 999px 999px 0;
 }
 
-.jobright-open-button:hover:not(:disabled),
 .action-settings-button:hover:not(:disabled) {
   color: var(--text);
   background: rgba(105, 114, 145, 0.1);
 }
 
-.jobright-open-button:active:not(:disabled),
 .action-settings-button:active:not(:disabled) {
   background: rgba(105, 114, 145, 0.14);
 }
 
-.jobright-open-button:disabled,
 .action-settings-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
 }
 
-.jobright-open-button .button-icon svg,
 .action-settings-button svg {
   width: 15px;
   height: 15px;
@@ -915,8 +912,7 @@ h1 {
 
 .prompt-resume-selection-card .action-icon-button:focus-visible,
 .save-workspace-actions .action-icon-button:focus-visible,
-.action-settings-button:focus-visible,
-.jobright-open-button:focus-visible {
+.action-settings-button:focus-visible {
   outline: 2px solid rgba(105, 114, 145, 0.24);
   outline-offset: -2px;
 }
@@ -951,15 +947,6 @@ h1 {
 
   .profile-list-empty {
     grid-column: 1 / -1;
-  }
-}
-
-@container application-actions-panel (min-width: 620px) {
-  .application-actions-grid {
-    grid-template-columns: repeat(3, max-content);
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
   }
 }
 
@@ -1354,16 +1341,6 @@ h1 {
   margin-top: 4px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
-}
-
-.application-action-buttons {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.application-action-buttons .primary-button {
-  width: 100%;
 }
 
 .job-description-selection-section {

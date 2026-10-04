@@ -30,6 +30,9 @@ is saved. It repeats that process once per checked profile, using the prompt and
 job-description snapshot captured when the run starts. Only one Save App run can
 be active at a time.
 
+On Home, Save App has a compact icon button and joined settings icon above
+Open Jobright. The Save App icon runs the save for the current tab.
+
 With ChatGPT or DeepSeek, `Save App` creates one selected-provider workflow per checked profile. ChatGPT
 is the default; DeepSeek and No Model are also selectable in Save App settings.
 It reuses the original job tab for the first profile and creates one additional
@@ -192,7 +195,9 @@ columns C-F shift to D-G.
   selected AI chat. Additional saving tabs reuse that group across Chrome; if
   necessary, the group moves to the selected AI chat's window. It is available on
   job posting pages, not Jobright Recommendations or Google Sheets.
-- **Open** in the Home workspace offers counts 1–5, 10, 25, 50, 100, and 150 on
+- **Open Jobright** in the Home workspace has a labeled main button, a joined
+  settings icon, and a round Play button. Both the main button and Play open the
+  configured number of recommendations. Settings offers counts 1–5, 10, 25, 50, 100, and 150 on
   Jobright's `/jobs/recommend` page. For each eligible recommendation it opens the
   employer's application page in a background tab, removes the app's standard
   tracking parameters from its URL, converts Lever `/apply` links to the base job
