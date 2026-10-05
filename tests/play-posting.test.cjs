@@ -43,10 +43,8 @@ function fixture({ aiUrl = "https://chatgpt.com/c/current", afterQuery } = {}) {
       calls.numbered.push({ tabId, jobUrl });
       return calls.numbered.length;
     },
-    arrangeAndGroupJobWithAiTab: async (jobTabId, aiTabId, options) => {
-      calls.grouped.push({ jobTabId, aiTabId,
-        appendAfterPreviousJob: options?.appendAfterPreviousJob,
-        appendToGroupEnd: options?.appendToGroupEnd });
+    arrangeAndGroupJobWithAiTab: async (jobTabId, aiTabId) => {
+      calls.grouped.push({ jobTabId, aiTabId });
       tabs.find((tab) => tab.id === jobTabId).groupId = 44;
     },
     waitForTabToMatchUrl: async (tabId, matches) => {
@@ -150,8 +148,7 @@ test("Play takes the highest-index eligible tab in the clicked chat's window", a
   assert.equal(result.tabId, 1);
   assert.equal(result.submissionNumber, null);
   assert.deepEqual(calls.numbered, []);
-  assert.deepEqual(calls.grouped, [{ jobTabId: 3, aiTabId: 1,
-    appendAfterPreviousJob: true, appendToGroupEnd: false }]);
+  assert.deepEqual(calls.grouped, [{ jobTabId: 3, aiTabId: 1 }]);
   assert.equal(calls.sent[0].text, "https://jobs.example/last");
   assert.equal(calls.sent[0].tabId, 1);
   assert.equal(calls.sent[0].options.aiProviderId, "chatgpt");
@@ -172,14 +169,14 @@ test("each Play picks the next rightmost ungrouped tab and stops when none remai
   assert.deepEqual(calls.numbered, []);
 });
 
-test("repeated Play clicks place jobs in check order before unrelated group members", async () => {
+test("repeated Play clicks place jobs after the rightmost tab, including unrelated group members", async () => {
   const base = fixture();
   base.tabs.push({ id: 7, windowId: 9, index: 4, groupId: 44, url: "https://example.com/unrelated" });
   const { context, groupOrder } = withRealTabOrdering(base);
   await context.playRightmostPostingToAi("one", { ownerTabId: 1 });
-  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  assert.deepEqual(groupOrder(), [1, 7, 3]);
   await context.playRightmostPostingToAi("two", { ownerTabId: 1 });
-  assert.deepEqual(groupOrder(), [1, 3, 2, 7]);
+  assert.deepEqual(groupOrder(), [1, 7, 3, 2]);
 });
 
 test("Play creates a group for an ungrouped chat and appends the next job", async () => {
@@ -193,14 +190,16 @@ test("Play creates a group for an ungrouped chat and appends the next job", asyn
   assert.deepEqual(groupOrder(), [1, 3, 2]);
 });
 
-test("Play uses the AI as its anchor when the previous job was closed or moved out", async () => {
+test("Play still uses the group's rightmost tab when the previous job was closed or moved out", async () => {
   for (const action of ["closed", "moved"]) {
-    const { context, tabs, groupOrder } = withRealTabOrdering(fixture());
+    const base = fixture();
+    base.tabs.push({ id: 7, windowId: 9, index: 4, groupId: 44, url: "https://example.com/unrelated" });
+    const { context, tabs, groupOrder } = withRealTabOrdering(base);
     await context.playRightmostPostingToAi("one", { ownerTabId: 1 });
     if (action === "closed") tabs.splice(tabs.findIndex((tab) => tab.id === 3), 1);
     else tabs.find((tab) => tab.id === 3).groupId = 55;
     await context.playRightmostPostingToAi("two", { ownerTabId: 1 });
-    assert.deepEqual(groupOrder(), [1, 2], action);
+    assert.deepEqual(groupOrder(), [1, 7, 2], action);
   }
 });
 
@@ -735,32 +734,37 @@ test("a batch sends rightmost jobs one by one, with random 60–90 second alarms
   assert.equal(maximum.state().nextRunAt, 1090000);
 });
 
-test("a Play batch appends jobs in order and a busy-chat retry keeps its position", async () => {
+test("a Play batch follows the group's changing right edge and a busy-chat retry keeps its position", async () => {
   const base = batchFixture(3);
   base.tabs.push({ id: 7, windowId: 9, index: 2, groupId: -1, url: "https://jobs.example/middle" });
-  const { context, calls, state, advance, groupOrder } = withRealTabOrdering(base);
+  base.tabs.push({ id: 8, windowId: 9, index: 4, groupId: 44, url: "https://example.com/unrelated" });
+  const { context, calls, state, advance, groupOrder, tabs } = withRealTabOrdering(base);
   let busy = false;
   context.sendFillAndSendToTab = async (tabId, text) => {
     calls.sent.push({ tabId, text });
     return { submitted: !busy };
   };
   await context.startPlayPostingBatch("batch", { ownerTabId: 1 });
-  assert.deepEqual(groupOrder(), [1, 3]);
+  assert.deepEqual(groupOrder(), [1, 8, 3]);
+  tabs.push({ id: 9, windowId: 9, index: 20, groupId: -1, url: "https://example.com/added-during-wait" });
+  await context.chrome.tabs.group({ tabIds: 9, groupId: 44 });
   await context.restorePlayPostingBatch();
   busy = true;
   advance();
   await context.runPlayPostingBatchStep();
-  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  assert.deepEqual(groupOrder(), [1, 8, 3, 9, 7]);
   assert.equal(state().completedCount, 1);
+  tabs.push({ id: 10, windowId: 9, index: 20, groupId: -1, url: "https://example.com/added-before-retry" });
+  await context.chrome.tabs.group({ tabIds: 10, groupId: 44 });
   const moveCount = calls.moves.length;
   busy = false;
   advance();
   await context.runPlayPostingBatchStep();
-  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  assert.deepEqual(groupOrder(), [1, 8, 3, 9, 7, 10]);
   assert.equal(calls.moves.length, moveCount);
   advance();
   await context.runPlayPostingBatchStep();
-  assert.deepEqual(groupOrder(), [1, 3, 7, 2]);
+  assert.deepEqual(groupOrder(), [1, 8, 3, 9, 7, 10, 2]);
   assert.equal(state(), null);
 });
 

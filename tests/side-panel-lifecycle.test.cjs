@@ -332,13 +332,24 @@ test("Save App reuses existing status icons without losing the original site fav
   assert.equal(siteIcon.getAttribute("media"), null);
 });
 
-function createPreviousTabContext(tabs, statuses = new Map()) {
+function createPreviousTabContext(tabs, statuses = new Map(), groups = []) {
   const queries = [];
   const updates = [];
+  const groupLookups = [];
   const context = vm.createContext({
     console,
+    URL,
+    CHECK_POSTING_TAB_GROUP_TITLE: "Check with AI",
     saveTitleStatusByTabId: statuses,
     chrome: {
+      tabGroups: {
+        get: async (groupId) => {
+          groupLookups.push(groupId);
+          const group = groups.find((candidate) => candidate.id === groupId);
+          if (!group) throw new Error("Group no longer exists.");
+          return group;
+        }
+      },
       runtime: {
         getURL: (resource) => "chrome-extension://application-helper/" + resource
       },
@@ -357,8 +368,8 @@ function createPreviousTabContext(tabs, statuses = new Map()) {
       }
     }
   });
-  load(worker, ["activatePreviousWaitingTab"], context);
-  return { context, queries, updates };
+  load(worker, ["isCopilotChatUrl", "getPostingAiProviderId", "activateSaveAppFocusTab"], context);
+  return { context, queries, updates, groupLookups };
 }
 
 test("Save App selects the nearest waiting tab on the left, regardless of query order", async () => {
@@ -370,7 +381,7 @@ test("Save App selects the nearest waiting tab on the left, regardless of query 
   ];
   const fixture = createPreviousTabContext(tabs);
 
-  const result = await fixture.context.activatePreviousWaitingTab(tabs[2]);
+  const result = await fixture.context.activateSaveAppFocusTab(tabs[2]);
 
   assert.equal(result.id, 12);
   assert.deepEqual(fixture.queries, [{ windowId: 5 }]);
@@ -386,7 +397,7 @@ test("Save App stays on the first tab without wrapping to the right", async () =
   ];
   const fixture = createPreviousTabContext(tabs);
 
-  const result = await fixture.context.activatePreviousWaitingTab(tabs[0]);
+  const result = await fixture.context.activateSaveAppFocusTab(tabs[0]);
 
   assert.equal(result, null);
   assert.deepEqual(fixture.queries, [{ windowId: 8 }]);
@@ -409,7 +420,7 @@ test("Save App skips saving, saved, and failed tabs when moving left", async () 
   ]);
   const fixture = createPreviousTabContext(tabs, statuses);
 
-  const result = await fixture.context.activatePreviousWaitingTab(tabs[5]);
+  const result = await fixture.context.activateSaveAppFocusTab(tabs[5]);
 
   assert.equal(result.id, 31);
   assert.deepEqual(fixture.updates, [{ tabId: 31, changes: { active: true } }]);
@@ -430,7 +441,7 @@ test("Save App stays in place if all tabs to the left have save status", async (
   ]);
   const fixture = createPreviousTabContext(tabs, statuses);
 
-  const result = await fixture.context.activatePreviousWaitingTab(tabs[3]);
+  const result = await fixture.context.activateSaveAppFocusTab(tabs[3]);
 
   assert.equal(result, null);
   assert.deepEqual(fixture.updates, []);
@@ -454,7 +465,7 @@ test("Save App recognizes status icons and titles after the in-memory map is los
       { id: 52, windowId: 8, index: 2, active: true }
     ];
     const fixture = createPreviousTabContext(tabs);
-    const result = await fixture.context.activatePreviousWaitingTab(tabs[2]);
+    const result = await fixture.context.activateSaveAppFocusTab(tabs[2]);
     assert.equal(result.id, 50, JSON.stringify(marker));
   }
 });
@@ -466,7 +477,7 @@ test("Save App preserves a manual focus change made before the tab query complet
     { ...source, active: false }
   ]);
 
-  assert.equal(await fixture.context.activatePreviousWaitingTab(source), null);
+  assert.equal(await fixture.context.activateSaveAppFocusTab(source), null);
   assert.deepEqual(fixture.updates, []);
 });
 
@@ -478,6 +489,110 @@ test("Save App uses the current tab order if its source tab was moved", async ()
     { id: 71, windowId: 8, index: 2 }
   ]);
 
-  assert.equal(await fixture.context.activatePreviousWaitingTab(source), null);
+  assert.equal(await fixture.context.activateSaveAppFocusTab(source), null);
+  assert.deepEqual(fixture.updates, []);
+});
+
+test("Save App returns to the AI chat in its Check with AI group instead of the previous job", async () => {
+  for (const url of [
+    "https://chatgpt.com/c/save-focus",
+    "https://copilot.microsoft.com/chats/save-focus",
+    "https://www.perplexity.ai/search/save-focus",
+    "https://chat.deepseek.com/a/chat/s/save-focus"
+  ]) {
+    const tabs = [
+      { id: 80, windowId: 8, index: 0, groupId: 9, url },
+      { id: 81, windowId: 8, index: 1, groupId: 9, url: "https://jobs.example/first" },
+      { id: 82, windowId: 8, index: 2, groupId: 9, url: "https://jobs.example/second", active: true },
+      { id: 83, windowId: 8, index: 3, groupId: 10, url }
+    ];
+    const fixture = createPreviousTabContext(tabs, new Map(), [{ id: 9, title: "Check with AI" }]);
+
+    const result = await fixture.context.activateSaveAppFocusTab(tabs[2]);
+
+    assert.equal(result.id, 80, url);
+    assert.deepEqual(fixture.updates, [{ tabId: 80, changes: { active: true } }]);
+  }
+});
+
+test("Save App finds its group AI chat to the right and ignores AI chats in other groups", async () => {
+  const tabs = [
+    { id: 90, windowId: 8, index: 0, groupId: 10, url: "https://chat.deepseek.com/" },
+    { id: 91, windowId: 8, index: 1, groupId: 9, url: "https://jobs.example/first" },
+    { id: 92, windowId: 8, index: 2, groupId: 9, url: "https://jobs.example/second", active: true },
+    { id: 93, windowId: 8, index: 3, groupId: 9, url: "https://www.perplexity.ai/" }
+  ];
+  const fixture = createPreviousTabContext(tabs, new Map(), [{ id: 9, title: "Check with AI" }]);
+
+  assert.equal((await fixture.context.activateSaveAppFocusTab(tabs[2])).id, 93);
+  assert.deepEqual(fixture.updates, [{ tabId: 93, changes: { active: true } }]);
+});
+
+test("Save App keeps focus on its source AI chat when that tab starts the save", async () => {
+  const tabs = [
+    { id: 100, windowId: 8, index: 0, groupId: 9, url: "https://chatgpt.com/" },
+    { id: 101, windowId: 8, index: 1, groupId: 9, url: "https://jobs.example/first" },
+    { id: 102, windowId: 8, index: 2, groupId: 9, url: "https://chat.deepseek.com/", active: true }
+  ];
+  const fixture = createPreviousTabContext(tabs, new Map(), [{ id: 9, title: "Check with AI" }]);
+
+  assert.equal((await fixture.context.activateSaveAppFocusTab(tabs[2])).id, 102);
+});
+
+test("Save App uses its waiting-tab fallback for other groups or groups without an AI chat", async () => {
+  for (const [title, aiUrl] of [
+    ["Saving to Docs", "https://chat.deepseek.com/"],
+    ["Check with AI", "https://jobs.example/older"]
+  ]) {
+    const tabs = [
+      { id: 110, windowId: 8, index: 0, groupId: 9, url: aiUrl },
+      { id: 111, windowId: 8, index: 1, groupId: 9, url: "https://jobs.example/first" },
+      { id: 112, windowId: 8, index: 2, groupId: 9, active: true }
+    ];
+    const fixture = createPreviousTabContext(tabs, new Map(), [{ id: 9, title }]);
+
+    assert.equal((await fixture.context.activateSaveAppFocusTab(tabs[2])).id, 111);
+  }
+});
+
+test("Save App still selects a waiting tab if its old group no longer exists", async () => {
+  const tabs = [
+    { id: 120, windowId: 8, index: 0, groupId: -1 },
+    { id: 121, windowId: 8, index: 1, groupId: -1, active: true }
+  ];
+  const fixture = createPreviousTabContext(tabs);
+
+  assert.equal((await fixture.context.activateSaveAppFocusTab({ ...tabs[1], groupId: 9 })).id, 120);
+  assert.deepEqual(fixture.groupLookups, [9]);
+});
+
+test("Save App respects a manual focus change during its AI group lookup", async () => {
+  const tabs = [
+    { id: 130, windowId: 8, index: 0, groupId: 9, url: "https://chat.deepseek.com/" },
+    { id: 131, windowId: 8, index: 1, groupId: 9, active: true },
+    { id: 132, windowId: 8, index: 2, groupId: -1 }
+  ];
+  const fixture = createPreviousTabContext(tabs);
+  fixture.context.chrome.tabGroups.get = async () => {
+    tabs[1].active = false;
+    tabs[2].active = true;
+    return { id: 9, title: "Check with AI" };
+  };
+
+  assert.equal(await fixture.context.activateSaveAppFocusTab({ ...tabs[1] }), null);
+  assert.deepEqual(fixture.updates, []);
+});
+
+test("Save App does not change focus for a background job in an AI group", async () => {
+  const tabs = [
+    { id: 140, windowId: 8, index: 0, groupId: 9, url: "https://chat.deepseek.com/" },
+    { id: 141, windowId: 8, index: 1, groupId: 9, active: false },
+    { id: 142, windowId: 8, index: 2, groupId: -1, active: true }
+  ];
+  const fixture = createPreviousTabContext(tabs, new Map(), [{ id: 9, title: "Check with AI" }]);
+
+  assert.equal(await fixture.context.activateSaveAppFocusTab(tabs[1]), null);
+  assert.deepEqual(fixture.groupLookups, []);
+  assert.deepEqual(fixture.queries, []);
   assert.deepEqual(fixture.updates, []);
 });

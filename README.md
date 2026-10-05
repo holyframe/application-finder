@@ -74,8 +74,10 @@ it does not schedule another submission or retry. The URL is submitted when
 the chat is idle; if the chat is responding, the URL is only inserted into the
 prompt. Focus stays on that AI chat. Settings stores an editable URL for
 Copilot, Perplexity, and DeepSeek, and which one is selected. Save App still
-writes the original job URL to the Google Sheet. When Save App starts, that
-job tab moves into a separate `Saving to Docs` group to the right of the
+writes the original job URL to the Google Sheet. Clicking Save App on a job in
+`Check with AI` focuses the AI chat in that same group. On other tabs, it selects
+the nearest waiting tab on the left. When Save App starts, the job tab moves
+into a separate `Saving to Docs` group to the right of the
 selected AI chat. Additional Save App tabs reuse the existing group instead of
 creating another one. If that group is in another window, it moves to the
 selected AI chat's window before the job joins it.
@@ -84,10 +86,10 @@ or creates it if it is not open, then moves its entire `Check with AI` group to
 the right end of that Chrome window. Pinned tabs are left in place.
 On an unpinned ChatGPT, Copilot chat, Perplexity, or DeepSeek tab, Play selects the rightmost other tab
 in that same Chrome window that is neither grouped nor pinned and sends its URL
-to that chat. The first job tab is placed
-immediately to the right of the AI chat in `Check with AI`. Each following job
-tab is placed immediately to the right of the previous job tab, keeping jobs in
-the order they were checked across batches and repeated Play clicks. A retry
+to that chat. Like the main Check posting button, Play places every new job tab
+after the rightmost tab in the AI's `Check with AI` group, including any other
+tabs already in the group. If the AI is ungrouped, a new two-tab group is created
+with the AI on the left and the job on the right. A retry
 keeps the pending job tab in its existing position. Focus stays on the AI chat.
 In Check posting settings, set Play's number of tabs
 (default 1), minimum and maximum wait in seconds (default 60–90), and its own
@@ -137,8 +139,7 @@ input lines are ignored, and unused existing text paragraphs are cleared
 without deleting their paragraph formatting. The configured master template is
 never edited, and no placeholder is required.
 
-No new Chrome tab group is created by `Save App`. It accepts an ungrouped or
-already-grouped job tab and leaves any existing group unchanged. While a
+`Save App` accepts an ungrouped or already-grouped job tab. While a
 ChatGPT or DeepSeek action is running, Cancel Process stays at the far right of
 the Job URL row in Application workspace or beside Save App in Home. During a
 No Model save, every participating profile panel has a Cancel Process button;
@@ -202,7 +203,8 @@ columns C-F shift to D-G.
   inserted into the prompt without submission or a scheduled retry. Focus stays
   on that AI chat. Settings lets you choose Copilot,
   Perplexity, or DeepSeek and edit each chat URL. Save App
-  still records the original job URL in the Google Sheet. Starting Save App also
+  still records the original job URL in the Google Sheet. Saving a job from
+  `Check with AI` focuses that group's AI chat. Starting Save App also
   moves that job tab into a separate `Saving to Docs` group to the right of the
   selected AI chat. Additional saving tabs reuse that group across Chrome; if
   necessary, the group moves to the selected AI chat's window.

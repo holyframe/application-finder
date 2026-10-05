@@ -1932,7 +1932,7 @@ function forgetPostingSubmission(tabId) {
   });
 }
 
-async function activatePreviousWaitingTab(sourceTab) {
+async function activateSaveAppFocusTab(sourceTab) {
   if (
     !Number.isInteger(sourceTab?.id) ||
     !Number.isInteger(sourceTab?.windowId) ||
@@ -1942,6 +1942,17 @@ async function activatePreviousWaitingTab(sourceTab) {
     return null;
   }
 
+  let sourceGroup = null;
+  if (Number.isInteger(sourceTab.groupId) && sourceTab.groupId >= 0) {
+    try {
+      sourceGroup = await chrome.tabGroups.get(sourceTab.groupId);
+    } catch (_error) {
+      // A closed group should not prevent the save or its normal focus fallback.
+    }
+  }
+
+  // Query after the group lookup so a manual focus change during either lookup
+  // is respected before choosing the next tab.
   const windowTabs = await chrome.tabs.query({
     windowId: sourceTab.windowId
   });
@@ -1950,6 +1961,25 @@ async function activatePreviousWaitingTab(sourceTab) {
   );
   if (currentSourceTab?.active !== true) {
     return null;
+  }
+
+  if (
+    sourceGroup?.title === CHECK_POSTING_TAB_GROUP_TITLE &&
+    currentSourceTab.groupId === sourceGroup.id
+  ) {
+    const aiTabs = windowTabs
+      .filter(
+        (candidateTab) =>
+          Number.isInteger(candidateTab?.id) &&
+          candidateTab.groupId === currentSourceTab.groupId &&
+          !candidateTab.pinned &&
+          getPostingAiProviderId(candidateTab.pendingUrl || candidateTab.url || "")
+      )
+      .sort((leftTab, rightTab) => leftTab.index - rightTab.index);
+    const aiTab = aiTabs.find((candidateTab) => candidateTab.id === sourceTab.id) || aiTabs[0];
+    if (aiTab) {
+      return chrome.tabs.update(aiTab.id, { active: true });
+    }
   }
 
   // Status icons/titles survive background-worker restarts even when the
@@ -2986,9 +3016,7 @@ async function moveTabGroupImmediatelyRightOfTab(groupId, anchorTabId) {
   });
 }
 
-async function arrangeAndGroupJobWithAiTab(jobTabId, aiTabId, {
-  appendAfterPreviousJob = false, appendToGroupEnd = false
-} = {}) {
+async function arrangeAndGroupJobWithAiTab(jobTabId, aiTabId) {
   if (
     !Number.isInteger(jobTabId) ||
     !Number.isInteger(aiTabId) ||
@@ -3012,29 +3040,15 @@ async function arrangeAndGroupJobWithAiTab(jobTabId, aiTabId, {
 
   if (isTabInGroup(initialAiTab)) {
     // A Play retry is already in position; leave the pending job where it is.
-    if ((appendAfterPreviousJob || appendToGroupEnd) && initialJobTab.groupId === initialAiTab.groupId) {
+    if (initialJobTab.groupId === initialAiTab.groupId) {
       await nameCheckPostingTabGroup(initialAiTab.groupId);
       return initialAiTab.groupId;
     }
 
-    let anchorTabId = aiTabId;
-    if (appendToGroupEnd) {
-      const groupTabs = await chrome.tabs.query({ groupId: initialAiTab.groupId });
-      const lastTab = groupTabs.filter((tab) => tab.id !== jobTabId)
-        .sort((left, right) => right.index - left.index)[0];
-      anchorTabId = lastTab?.id ?? aiTabId;
-    } else if (appendAfterPreviousJob) {
-      const [groupTabs, stored] = await Promise.all([
-        chrome.tabs.query({ groupId: initialAiTab.groupId }),
-        chrome.storage.session.get(CHECK_POSTING_JOB_STORAGE_KEY)
-      ]);
-      const rememberedJobs = stored[CHECK_POSTING_JOB_STORAGE_KEY] || {};
-      const previousJob = groupTabs.filter((tab) =>
-        tab.id !== aiTabId && tab.id !== jobTabId &&
-        tab.index > initialAiTab.index && rememberedJobs[String(tab.id)]?.jobUrl
-      ).sort((left, right) => right.index - left.index)[0];
-      anchorTabId = previousJob?.id ?? aiTabId;
-    }
+    const groupTabs = await chrome.tabs.query({ groupId: initialAiTab.groupId });
+    const lastTab = groupTabs.filter((tab) => tab.id !== jobTabId)
+      .sort((left, right) => right.index - left.index)[0];
+    const anchorTabId = lastTab?.id ?? aiTabId;
 
     // Preserve the AI tab's group. Move the job into that window, join it to
     // the existing group, and then place it after the chosen anchor.
@@ -3282,9 +3296,7 @@ async function playRightmostPostingToAi(runId, options = {}) {
     throw new Error("No other ungrouped, unpinned tab is available in this Chrome window.");
   }
 
-  return sendPlayPostingTabToAi(runId, aiTab, jobTab, {
-    appendToGroupEnd: options.appendToGroupEnd === true
-  });
+  return sendPlayPostingTabToAi(runId, aiTab, jobTab);
 }
 
 async function checkPostingOnce(runId, options = {}) {
@@ -3304,7 +3316,7 @@ async function checkPostingOnce(runId, options = {}) {
       return await makeOrOpenCheckPostingAiTab(runId, { ownerTabId });
     }
     return await playRightmostPostingToAi(runId, {
-      ownerTabId, actionLabel: "Check posting", appendToGroupEnd: true
+      ownerTabId, actionLabel: "Check posting"
     });
   } finally {
     playPostingBatchStepRunning = false;
@@ -3312,7 +3324,7 @@ async function checkPostingOnce(runId, options = {}) {
 }
 
 async function sendPlayPostingTabToAi(runId, aiTab, jobTab, {
-  retry = false, trackSubmissionNumber = false, appendToGroupEnd = false
+  retry = false, trackSubmissionNumber = false
 } = {}) {
   sendLog(runId, "info", retry
     ? "Retrying the same posting URL now that the chat may be ready..."
@@ -3321,8 +3333,6 @@ async function sendPlayPostingTabToAi(runId, aiTab, jobTab, {
     ownerTabId: jobTab.id,
     aiTabId: aiTab.id,
     requireUngroupedSource: !retry,
-    appendAfterPreviousJob: !appendToGroupEnd,
-    appendToGroupEnd,
     sourceUrl: jobTab.url
   });
   const submissionNumber = result.submitted && trackSubmissionNumber
@@ -3558,10 +3568,7 @@ async function sendCheckPostingToCopilot(runId, options = {}) {
   if (aiTab) {
     sendLog(runId, "info", `Using the open ${provider.label} tab...`);
     if (aiTab.id !== ownerTabId) {
-      await arrangeAndGroupJobWithAiTab(ownerTabId, aiTab.id, {
-        appendAfterPreviousJob: options.appendAfterPreviousJob,
-        appendToGroupEnd: options.appendToGroupEnd
-      });
+      await arrangeAndGroupJobWithAiTab(ownerTabId, aiTab.id);
     }
   } else {
     const windowTabs = await chrome.tabs.query({ windowId: tab.windowId });
@@ -3573,10 +3580,7 @@ async function sendCheckPostingToCopilot(runId, options = {}) {
       active: true
     });
     if (Number.isInteger(aiTab?.id)) {
-      await arrangeAndGroupJobWithAiTab(ownerTabId, aiTab.id, {
-        appendAfterPreviousJob: options.appendAfterPreviousJob,
-        appendToGroupEnd: options.appendToGroupEnd
-      });
+      await arrangeAndGroupJobWithAiTab(ownerTabId, aiTab.id);
     }
   }
 
@@ -5293,18 +5297,21 @@ async function runSaveCurrentTabUrlToSheet(runId, options = {}) {
   await startSaveTabTitleStatus(ownerTabId, tab.title || "Job page");
 
   try {
-    const previousWaitingTab = await activatePreviousWaitingTab(tab);
-    if (previousWaitingTab) {
-      sendLog(runId, "info", "Moved focus to the previous waiting Chrome tab.");
+    const focusedTab = await activateSaveAppFocusTab(tab);
+    if (focusedTab) {
+      const message = getPostingAiProviderId(focusedTab.pendingUrl || focusedTab.url || "")
+        ? "Moved focus to the AI chat tab."
+        : "Moved focus to the previous waiting Chrome tab.";
+      sendLog(runId, "info", message);
     } else if (tab.active === true) {
-      sendLog(runId, "info", "Focus was not moved; no previous waiting tab was selected.");
+      sendLog(runId, "info", "Focus was not moved; no next tab was selected for Save App.");
     }
   } catch (error) {
-    console.info("Could not activate the previous waiting Chrome tab:", error);
+    console.info("Could not select the next Chrome tab for Save App:", error);
     sendLog(
       runId,
       "info",
-      "Save App is continuing, but the previous waiting Chrome tab could not be selected."
+      "Save App is continuing, but the next Chrome tab could not be selected."
     );
   }
 

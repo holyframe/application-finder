@@ -43,7 +43,7 @@ function fixture({
     getAiProviderConfig: (id) => ({ id, saveOnly: id === "none" }),
     sendLog: () => {},
     startSaveTabTitleStatus: async () => true,
-    activatePreviousWaitingTab: async () => null,
+    activateSaveAppFocusTab: async () => null,
     moveJobTabToSavingDocsGroup: async () => false,
     assertActiveJobTabUsable: (tab) => assert.equal(tab.id, 7),
     scheduleSavePostProcess: async (options) => { schedule = options; },

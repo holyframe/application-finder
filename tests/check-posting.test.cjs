@@ -97,7 +97,7 @@ test("Check posting opens the selected chat or checks one rightmost tab", () => 
   assert.match(worker, /tab\.pinned === true/);
   assert.match(worker, /chrome\.tabs\.create\(\{/);
   assert.match(worker, /index: windowTabs\.length/);
-  assert.match(worker, /arrangeAndGroupJobWithAiTab\(ownerTabId, aiTab\.id, \{/);
+  assert.match(worker, /arrangeAndGroupJobWithAiTab\(ownerTabId, aiTab\.id\)/);
   assert.match(worker, /chrome\.tabs\.group\(\{/);
   assert.match(worker, /tabIds: \[aiTabId, jobTabId\]/);
   assert.match(worker, /GET_CHECK_POSTING_CONFIG/);
@@ -334,6 +334,7 @@ test("Check posting joins the AI tab's existing group without creating another",
     },
     chrome: {
       tabs: {
+        query: async () => [{ id: 3, index: 0 }],
         get: async (tabId) => ({
           id: tabId,
           windowId: tabId === 2 ? 8 : 9,
