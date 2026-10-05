@@ -558,8 +558,19 @@
             <div class="action-setting-block">
               <label class="config-label" for="playPostingTabCountInput">Number of tabs</label>
               <input id="playPostingTabCountInput" class="config-input" type="number" min="1" step="1" value="1" required />
-              <p class="modal-help">Send the first URL immediately, then wait a random 1–1.5 minutes between URLs. Click Play again to stop.</p>
+              <p class="modal-help">Send the first URL immediately. Click Play again to stop.</p>
             </div>
+            <div class="play-posting-delay-fields">
+              <div class="action-setting-block">
+                <label class="config-label" for="playPostingDelayMinInput">Minimum wait (seconds)</label>
+                <input id="playPostingDelayMinInput" class="config-input" type="number" min="1" max="86400" step="1" value="60" required />
+              </div>
+              <div class="action-setting-block">
+                <label class="config-label" for="playPostingDelayMaxInput">Maximum wait (seconds)</label>
+                <input id="playPostingDelayMaxInput" class="config-input" type="number" min="1" max="86400" step="1" value="90" required />
+              </div>
+            </div>
+            <p class="modal-help">Play waits a random time in this range between URLs and when retrying a busy chat. Set both to the same value for a fixed wait. Changes apply to the next Play run.</p>
             <div class="action-setting-block">
               <label class="config-label">Play hotkey</label>
               <div class="action-hotkey-row">

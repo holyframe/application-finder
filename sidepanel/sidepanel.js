@@ -6,6 +6,8 @@ const checkPostingButton = document.querySelector("#checkPostingButton");
 const playButton = document.querySelector("#playButton");
 const checkPostingDeleteButton = document.querySelector("#checkPostingDeleteButton");
 const playPostingTabCountInput = document.querySelector("#playPostingTabCountInput");
+const playPostingDelayMinInput = document.querySelector("#playPostingDelayMinInput");
+const playPostingDelayMaxInput = document.querySelector("#playPostingDelayMaxInput");
 const playPostingHotkeyValue = document.querySelector("#playPostingHotkeyValue");
 const playPostingAssignHotkeyButton = document.querySelector("#playPostingAssignHotkeyButton");
 const PLAY_POSTING_BATCH_STORAGE_KEY = "playPostingBatch";
@@ -2636,6 +2638,13 @@ function applyCheckPostingSettings(config = {}) {
   if (playPostingTabCountInput) {
     playPostingTabCountInput.value = String(config.playTabCount || 1);
   }
+  if (playPostingDelayMinInput) {
+    playPostingDelayMinInput.value = String(config.playDelayMinSeconds ?? 60);
+  }
+  if (playPostingDelayMaxInput) {
+    playPostingDelayMaxInput.value = String(config.playDelayMaxSeconds ?? 90);
+    playPostingDelayMaxInput.setCustomValidity("");
+  }
 }
 
 function readCheckPostingSettingsForm() {
@@ -2653,7 +2662,9 @@ function readCheckPostingSettingsForm() {
     providerId: selectedProvider?.value || "copilot",
     urls,
     autoNextTab: checkPostingAutoNextTabInput?.checked === true,
-    playTabCount: Number(playPostingTabCountInput?.value ?? 1)
+    playTabCount: Number(playPostingTabCountInput?.value ?? 1),
+    playDelayMinSeconds: Number(playPostingDelayMinInput?.value ?? 60),
+    playDelayMaxSeconds: Number(playPostingDelayMaxInput?.value ?? 90)
   };
 }
 
@@ -2676,17 +2687,25 @@ async function loadCheckPostingSettings() {
 }
 
 async function saveCheckPostingSettings() {
-  if (playPostingTabCountInput && !playPostingTabCountInput.reportValidity()) {
-    return false;
+  playPostingDelayMaxInput?.setCustomValidity("");
+  for (const input of [playPostingTabCountInput, playPostingDelayMinInput, playPostingDelayMaxInput]) {
+    if (input && !input.reportValidity()) return false;
   }
   const settings = readCheckPostingSettingsForm();
+  if (settings.playDelayMaxSeconds < settings.playDelayMinSeconds) {
+    playPostingDelayMaxInput?.setCustomValidity("Maximum wait must be at least the minimum wait.");
+    playPostingDelayMaxInput?.reportValidity();
+    return false;
+  }
   try {
     const response = await chrome.runtime.sendMessage({
       type: "SAVE_CHECK_POSTING_CONFIG",
       providerId: settings.providerId,
       urls: settings.urls,
       autoNextTab: settings.autoNextTab,
-      playTabCount: settings.playTabCount
+      playTabCount: settings.playTabCount,
+      playDelayMinSeconds: settings.playDelayMinSeconds,
+      playDelayMaxSeconds: settings.playDelayMaxSeconds
     });
     if (!response?.ok) {
       throw new Error(response?.error || "Could not save Check posting settings.");

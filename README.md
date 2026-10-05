@@ -86,10 +86,14 @@ tab is placed immediately to the right of the previous job tab, keeping jobs in
 the order they were checked across batches and repeated Play clicks. A retry
 keeps the pending job tab in its existing position. Focus stays on the AI chat.
 In Check posting settings, set Play's number of tabs
-(default 1) and assign its own hotkey. The first URL sends immediately. Larger
-batches send one URL at a time, with a random 60–90 second wait before each next
-submission. If the chat is responding, Play retries the same job after another
-wait. Clicking Play or using its hotkey again stops the remaining batch.
+(default 1), minimum and maximum wait in seconds (default 60–90), and its own
+hotkey. Waits accept whole seconds from 1 to 86400, with the maximum at least
+the minimum; set both to the same value for a fixed interval. The first URL
+sends immediately. Larger batches send one URL at a time, with a random wait
+in that range before each next submission. If the chat is responding, Play
+retries the same job after another wait in the same range. Changes to these
+settings apply to the next Play run. Clicking Play or using its hotkey again
+stops the remaining batch.
 Waiting batches survive closing the panel and extension-worker restarts; Chrome
 may delay scheduled submissions while the device sleeps. Play finishes early
 if no eligible tabs remain and stops if its chat or pending job changes.

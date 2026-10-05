@@ -2285,6 +2285,18 @@ function normalizeCheckPostingAiUrl(providerId, url = "") {
   return normalized;
 }
 
+function validatePlayPostingDelayRange(playDelayMinSeconds = 60, playDelayMaxSeconds = 90) {
+  for (const seconds of [playDelayMinSeconds, playDelayMaxSeconds]) {
+    if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 86400) {
+      throw new Error("Play wait times must be whole numbers from 1 to 86400 seconds.");
+    }
+  }
+  if (playDelayMaxSeconds < playDelayMinSeconds) {
+    throw new Error("Maximum wait must be at least the minimum wait.");
+  }
+  return { playDelayMinSeconds, playDelayMaxSeconds };
+}
+
 async function getCheckPostingConfig() {
   const stored = await chrome.storage.local.get(CHECK_POSTING_CONFIG_STORAGE_KEY);
   const config = stored[CHECK_POSTING_CONFIG_STORAGE_KEY] || {};
@@ -2302,20 +2314,30 @@ async function getCheckPostingConfig() {
     }
   }
 
+  let delayRange;
+  try {
+    delayRange = validatePlayPostingDelayRange(config.playDelayMinSeconds, config.playDelayMaxSeconds);
+  } catch (_error) {
+    delayRange = validatePlayPostingDelayRange();
+  }
+
   return {
     providerId,
     urls,
     url: urls[providerId],
     autoNextTab: config.autoNextTab === true,
     playTabCount: Number.isSafeInteger(config.playTabCount) && config.playTabCount >= 1
-      ? config.playTabCount : 1
+      ? config.playTabCount : 1,
+    ...delayRange
   };
 }
 
-async function saveCheckPostingConfig(providerId, urls = {}, autoNextTab, playTabCount = 1) {
+async function saveCheckPostingConfig(providerId, urls = {}, autoNextTab, playTabCount = 1,
+  playDelayMinSeconds = 60, playDelayMaxSeconds = 90) {
   if (!Number.isSafeInteger(playTabCount) || playTabCount < 1) {
     throw new Error("Play tab count must be a whole number of at least 1.");
   }
+  const delayRange = validatePlayPostingDelayRange(playDelayMinSeconds, playDelayMaxSeconds);
   const normalizedProviderId = normalizeCheckPostingProviderId(providerId);
   const normalizedUrls = {};
   for (const id of Object.keys(checkPostingAiDefaults())) {
@@ -2325,7 +2347,8 @@ async function saveCheckPostingConfig(providerId, urls = {}, autoNextTab, playTa
     providerId: normalizedProviderId,
     urls: normalizedUrls,
     autoNextTab: autoNextTab === true,
-    playTabCount
+    playTabCount,
+    ...delayRange
   };
   await chrome.storage.local.set({
     [CHECK_POSTING_CONFIG_STORAGE_KEY]: config
@@ -3392,11 +3415,12 @@ async function startPlayPostingBatch(runId, options = {}) {
     if (!providerId || aiTab.pinned) {
       throw new Error("Play is available on an unpinned AI chat tab.");
     }
-    const { playTabCount } = await getCheckPostingConfig();
+    const { playTabCount, playDelayMinSeconds, playDelayMaxSeconds } = await getCheckPostingConfig();
     await updatePlayPostingBatchState(() => ({
       runId, ownerTabId, providerId, aiUrl: aiTab.url,
       allowNewConversation: new URL(aiTab.url).pathname === "/",
       tabCount: playTabCount, completedCount: 0, pendingJob: null,
+      playDelayMinSeconds, playDelayMaxSeconds,
       phase: "ready", nextRunAt: null
     }));
     return await runPlayPostingBatchStep();
@@ -3455,7 +3479,9 @@ async function runPlayPostingBatchStep() {
         `Play completed: ${completedCount} of ${state.tabCount} URLs sent.`, "success");
       return { ...result, active: false, completedCount };
     }
-    const delayMs = randomDelayMs(60000, 90000);
+    const { playDelayMinSeconds, playDelayMaxSeconds } = validatePlayPostingDelayRange(
+      state.playDelayMinSeconds, state.playDelayMaxSeconds);
+    const delayMs = randomDelayMs(playDelayMinSeconds * 1000, playDelayMaxSeconds * 1000);
     const nextState = await updatePlayPostingBatchState((current) =>
       current?.runId === state.runId ? {
         ...current, completedCount, phase: "waiting",
@@ -4740,7 +4766,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "SAVE_CHECK_POSTING_CONFIG") {
-    saveCheckPostingConfig(message.providerId, message.urls, message.autoNextTab, message.playTabCount)
+    saveCheckPostingConfig(message.providerId, message.urls, message.autoNextTab, message.playTabCount,
+      message.playDelayMinSeconds, message.playDelayMaxSeconds)
       .then((config) => sendResponse({ ok: true, ...config }))
       .catch((error) => {
         sendResponse({

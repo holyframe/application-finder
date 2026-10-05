@@ -444,7 +444,7 @@ function batchFixture(tabCount = 1) {
   };
   load(worker, [
     "checkPostingAiDefaults", "checkPostingAiLabel", "normalizeCheckPostingProviderId", "normalizeCheckPostingAiUrl",
-    "getCheckPostingConfig", "saveCheckPostingConfig", "randomDelayMs",
+    "validatePlayPostingDelayRange", "getCheckPostingConfig", "saveCheckPostingConfig", "randomDelayMs",
     "getPlayPostingBatchState", "updatePlayPostingBatchState", "finishPlayPostingBatch",
     "cancelPlayPostingBatch", "startPlayPostingBatch", "runPlayPostingBatchStep",
     "restorePlayPostingBatch"
@@ -611,6 +611,90 @@ test("Play count defaults to 1, persists a whole-number selection, and rejects i
     await assert.rejects(context.saveCheckPostingConfig("copilot", {}, false, count), /whole number/);
   }
   assert.equal((await context.getCheckPostingConfig()).playTabCount, 3);
+});
+
+test("Play wait settings preserve defaults, save valid ranges, and reject invalid ranges without overwriting", async () => {
+  const { context, setConfig } = batchFixture();
+  const readRange = async () => {
+    const config = await context.getCheckPostingConfig();
+    return [config.playDelayMinSeconds, config.playDelayMaxSeconds];
+  };
+  assert.deepEqual(await readRange(), [60, 90]);
+  for (const range of [[0, 90], [1.5, 90], ["60", 90], [60, null], [100, 90], [60, 86401]]) {
+    setConfig({ playDelayMinSeconds: range[0], playDelayMaxSeconds: range[1] });
+    assert.deepEqual(await readRange(), [60, 90]);
+  }
+  await context.saveCheckPostingConfig("copilot", {}, false, 3, 45, 75);
+  assert.deepEqual(await readRange(), [45, 75]);
+  for (const range of [[0, 90], [-1, 90], [1.5, 90], ["60", 90], [60, NaN], [60, 86401]]) {
+    await assert.rejects(context.saveCheckPostingConfig("copilot", {}, false, 3, ...range), /whole numbers/);
+  }
+  await assert.rejects(context.saveCheckPostingConfig("copilot", {}, false, 3, 75, 45), /at least the minimum/);
+  assert.deepEqual(await readRange(), [45, 75]);
+  await context.saveCheckPostingConfig("copilot", {}, false, 3, 25, 25);
+  assert.deepEqual(await readRange(), [25, 25]);
+});
+
+test("Play schedules configured random bounds or a fixed interval after an immediate first send", async () => {
+  for (const [minimum, maximum, random, expectedSeconds] of [
+    [45, 75, 0, 45], [45, 75, 0.999999, 75], [25, 25, 0.5, 25]
+  ]) {
+    const { context, calls, state, alarms } = batchFixture(2);
+    await context.saveCheckPostingConfig("copilot", {}, false, 2, minimum, maximum);
+    context.Math.random = () => random;
+    await context.startPlayPostingBatch("custom-wait", { ownerTabId: 1 });
+    assert.equal(calls.sent.length, 1);
+    assert.equal(state().nextRunAt, 1000000 + expectedSeconds * 1000);
+    assert.equal(alarms.get("play-posting-batch").when, state().nextRunAt);
+    assert.match(calls.logs.at(-1).message, new RegExp(`Next URL in ${expectedSeconds} seconds`));
+  }
+});
+
+test("Play retains its saved interval through worker restoration, settings changes, and busy-chat retries", async () => {
+  const { context, calls, state, setConfig, alarms, advance, tabs } = batchFixture(3);
+  tabs.push({ id: 7, windowId: 9, index: 10, groupId: -1, url: "https://jobs.example/newest" });
+  await context.saveCheckPostingConfig("copilot", {}, false, 3, 17, 17);
+  let busy = false;
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: !busy };
+  };
+  await context.startPlayPostingBatch("saved-wait", { ownerTabId: 1 });
+  assert.equal(state().nextRunAt, 1017000);
+  assert.equal(state().playDelayMinSeconds, 17);
+  assert.equal(state().playDelayMaxSeconds, 17);
+  setConfig({ playTabCount: 3, playDelayMinSeconds: 200, playDelayMaxSeconds: 250 });
+  alarms.clear();
+  await context.restorePlayPostingBatch();
+  assert.equal(alarms.get("play-posting-batch").when, 1017000);
+  advance();
+  busy = true;
+  await context.runPlayPostingBatchStep();
+  assert.equal(state().nextRunAt, 1034000);
+  assert.equal(state().completedCount, 1);
+  assert.match(calls.logs.at(-1).message, /retry this same URL in 17 seconds/);
+  advance();
+  busy = false;
+  await context.runPlayPostingBatchStep();
+  assert.equal(calls.sent[2].text, calls.sent[1].text);
+  assert.equal(state().nextRunAt, 1051000);
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.equal(state(), null);
+  assert.equal(calls.sent.length, 4);
+  assert.equal((await context.getCheckPostingConfig()).playDelayMinSeconds, 200);
+});
+
+test("a restored batch created before wait settings uses the original 60–90 second range", async () => {
+  const { context, state, setSession, setConfig } = batchFixture(2);
+  setConfig({ playTabCount: 2, playDelayMinSeconds: 10, playDelayMaxSeconds: 10 });
+  setSession({
+    runId: "legacy", ownerTabId: 1, providerId: "chatgpt", aiUrl: "https://chatgpt.com/c/current",
+    allowNewConversation: false, tabCount: 2, completedCount: 0, pendingJob: null,
+    phase: "ready", nextRunAt: null
+  });
+  await context.restorePlayPostingBatch();
+  assert.equal(state().nextRunAt, 1060000);
 });
 
 test("a default single-tab Play sends immediately without numbering or an alarm", async () => {
