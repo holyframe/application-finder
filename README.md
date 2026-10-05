@@ -22,6 +22,10 @@ resume variant checks its profile automatically, while unchecking a profile keep
 its assigned resume available for the next application. Then provide a base AI
 prompt and job description.
 
+Each profile row has Auto, Settings, and Remove controls. Settings contains the
+profile name and Google Docs resume template; click Save profile to apply those
+changes. Prompt resume variants are managed in the same dialog and save immediately.
+
 `Save App` normalizes the active job URL, copies each checked profile's
 configured Google Docs resume template, submits the prepared message to the selected
 AI provider, and saves the seven-column application record. An in-panel save progress
@@ -110,11 +114,13 @@ selected chat's group. A group without an AI chat is kept intact.
 If a run stops partway through, completed records and resume copies remain;
 check the sheet before retrying to avoid duplicates.
 
-Build resume, Download resume, and Exchange appear above the URL panel. Build
+Export and Import appear as icon buttons beside Save App. The workspace header
+panels, manual workspace exchange, and header AI prompt update shortcut are removed.
+Edit the save prompt from Save App settings.
+
+Build resume and Download resume appear above the URL panel. Build
 resume opens a Resume Context dialog and maps the submitted text onto the
 existing copied document. Download resume exports that document as PDF.
-Exchange stores the main supported-AI URL before navigating the main tab to
-the job URL; the next Exchange restores the stored chat URL.
 
 The Application workspace URL bar edits the embedded resume URL. Press Enter
 or use Refresh to validate, save, and reload it, while Copy copies the current
@@ -122,7 +128,7 @@ field value. Pickup opens job or supported AI URLs in a new Chrome window
 positioned on the right. For Save App, AI Pickup becomes available as soon as
 the selected provider's exact conversation URL is captured, even while that
 conversation is still open in the main tab. The Notes icon
-to the left of Refresh opens the current profile's notes in a modal.
+beside Delete in the Job URL row opens the current profile's notes in a modal.
 
 Build resume maps each non-empty input line to the next existing text paragraph
 in the current copied Google Doc. It retains that document's paragraph
@@ -134,11 +140,10 @@ never edited, and no placeholder is required.
 No new Chrome tab group is created by `Save App`. It accepts an ungrouped or
 already-grouped job tab and leaves any existing group unchanged. While a
 ChatGPT or DeepSeek action is running, Cancel Process stays at the far right of
-the matching workspace header. During a No Model save, every participating
-profile panel has a Cancel Process button; any one cancels the shared run. The
-header Exchange icon that switches between
-Home and Application workspaces stays disabled on involved tabs until the
-final Google Sheet row is saved. Saving that row ends progress immediately.
+the Job URL row in Application workspace or beside Save App in Home. During a
+No Model save, every participating profile panel has a Cancel Process button;
+any one cancels the shared run. The
+final Google Sheet row ends progress immediately.
 Cancel Process stops both progress and the active save early. Successful
 completion or cancellation keeps profile selections unchanged. ChatGPT and
 DeepSeek clear the job description; No Model preserves its unused AI text
@@ -152,21 +157,15 @@ until that Chrome tab is closed. Completed sheet rows and opened tabs are
 never rolled back. The newest process log is shown first. No Chrome notification
 is created.
 
-While save progress is active, only the Chrome tabs involved in that run
-keep the Home/Application workspace switch icon disabled. Other tabs stay unlocked for non-save work, but
-another Save App request is rejected until the active run finishes or is cancelled.
+Other tabs stay available for non-save work while a save runs, but another Save
+App request is rejected until the active run finishes or is cancelled.
 
-Outside save progress, the matching workspace headers show an Exchange icon
-for switching between the two views. The Home workspace header also provides
-a left-side Settings icon that opens configuration in a modal.
-
-Before `Save App` runs, and on browser tabs that are not bound to the current
-saved application, the Application workspace shows an empty resume state and
-disabled resume actions. Returning to any selected-provider tab created by the batch
+Before `Save App` runs, and on tabs without a saved application workspace, the
+panel shows Home. Returning to any selected-provider tab created by the batch
 restores that profile's populated side-panel workspace, including after the
 side panel is closed and reopened. Each workspace and its process details are
-removed only when its bound tab closes; after the final bound tab closes, the
-empty Application workspace remains available.
+removed only when its bound tab closes or its application is deleted. After the
+final bound tab closes, Home is shown.
 
 ## Google Sheet columns
 
@@ -244,8 +243,7 @@ columns C-F shift to D-G.
   saved AI conversation, the Application workspace also provides a separate
   text box and Send button. Send opens or reuses that exact picked-up tab and
   delivers the entered text to it. Each workspace keeps its own unsent draft.
-  Exchange can still swap the stored main-tab job/chat URLs. The Notes icon
-  displays the matched profile note in a modal. Switching among saved application
+  The Notes icon displays the matched profile note in a modal. Switching among saved application
   tabs restores each tab's workspace.
 - Profile notes are stored locally for reference and are not sent to an AI provider or
   written to the Google Sheet.

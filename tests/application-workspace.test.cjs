@@ -69,3 +69,71 @@ test("removed Sheet-import workspaces and dialog state cannot return after a pan
     assert.equal(Object.hasOwn(state, key), false, key);
   }
 });
+
+test("restored tabs drop removed view preferences and retain a chat URL saved by legacy Exchange", async () => {
+  const chatUrl = "https://chat.deepseek.com/a/chat/s/legacy123";
+  const context = fixture({
+    workspaces: {
+      1: { sessionType: "save-workspace", chatGptUrl: "https://jobs.example/42", storedExchangeUrl: chatUrl }
+    },
+    tabStates: {
+      1: { saveWorkspaceSidePanelView: "home", defaultSidePanelView: "workspace", manualSelectedProfileIds: ["alice"] }
+    }
+  });
+  await context.restoreTabSession();
+  const workspace = context.saveWorkspacesByTabId.get(1);
+  assert.equal(workspace.chatGptUrl, chatUrl);
+  assert.equal(Object.hasOwn(workspace, "storedExchangeUrl"), false);
+  const state = context.tabStateById.get(1);
+  assert.equal(Object.hasOwn(state, "saveWorkspaceSidePanelView"), false);
+  assert.equal(Object.hasOwn(state, "defaultSidePanelView"), false);
+  assert.deepEqual(Array.from(state.manualSelectedProfileIds), ["alice"]);
+});
+
+test("tabs display their saved workspace automatically and return Home when that workspace is removed", () => {
+  const element = () => ({
+    classes: new Set(), attributes: {}, focused: false,
+    classList: {
+      add(name) { this.owner.classes.add(name); },
+      toggle(name, present) { if (present) this.owner.classes.add(name); else this.owner.classes.delete(name); }
+    },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    removeAttribute(name) { delete this.attributes[name]; },
+    focus() { this.focused = true; }
+  });
+  const nodes = Object.fromEntries(["appRoot", "splitWindowsModal", "buildResumeContextModal", "applicationWorkspaceUrlInput", "saveButton"]
+    .map(name => {
+      const node = element();
+      node.classList.owner = node;
+      return [name, node];
+    }));
+  const selectedTabs = [];
+  const context = vm.createContext({
+    ...nodes, currentSaveWorkspace: null, isBuildResumeContextModalOpen: false,
+    renderSavePostProcessControls() {}, setSaveWorkspaceTab: tab => selectedTabs.push(tab)
+  });
+  for (const name of ["hasActiveSaveWorkspaceForCurrentTab", "getCurrentSidePanelView", "renderSaveWorkspaceSidePanelView"]) {
+    const match = source.match(new RegExp("^(?:async )?function " + name + "\\b[\\s\\S]*?^}\\r?$", "m"));
+    assert.ok(match, name);
+    vm.runInContext(match[0], context);
+  }
+  context.renderSaveWorkspaceSidePanelView();
+  assert.equal(context.getCurrentSidePanelView(), "home");
+  assert.equal(nodes.appRoot.classes.has("is-workspace-hidden"), false);
+  assert.equal(nodes.splitWindowsModal.attributes["aria-hidden"], "true");
+  context.currentSaveWorkspace = { activeTab: "resume" };
+  context.isBuildResumeContextModalOpen = true;
+  context.renderSaveWorkspaceSidePanelView({ focus: true });
+  assert.equal(context.getCurrentSidePanelView(), "workspace");
+  assert.equal(nodes.appRoot.classes.has("is-workspace-hidden"), true);
+  assert.equal(nodes.splitWindowsModal.attributes["aria-hidden"], "false");
+  assert.equal(nodes.applicationWorkspaceUrlInput.focused, true);
+  assert.deepEqual(selectedTabs, ["resume"]);
+  assert.equal(nodes.buildResumeContextModal.attributes["aria-hidden"], "false");
+  context.currentSaveWorkspace = null;
+  context.renderSaveWorkspaceSidePanelView({ focus: true });
+  assert.equal(nodes.appRoot.classes.has("is-workspace-hidden"), false);
+  assert.equal(nodes.splitWindowsModal.attributes["aria-hidden"], "true");
+  assert.equal(nodes.buildResumeContextModal.attributes["aria-hidden"], "true");
+  assert.equal(nodes.saveButton.focused, true);
+});

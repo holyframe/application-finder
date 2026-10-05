@@ -974,33 +974,6 @@ async function savePromptSelectionState(contentInput) {
   });
 }
 
-async function forkPromptSelectionState(contentInput) {
-  const content = normalizePromptContent(contentInput);
-  if (!content) {
-    throw new Error("Prompt text is required.");
-  }
-
-  const current = await loadPromptSelectionRecord();
-  const selected = current.prompts.find(
-    (entry) => entry.id === current.selectedPromptId
-  );
-
-  if (selected && selected.content === content) {
-    return current;
-  }
-
-  const prompt = {
-    id: createPromptId(),
-    content,
-    updatedAt: new Date().toISOString(),
-    label: `GPT Prompt ${current.prompts.length + 1}`
-  };
-
-  return persistPromptSelectionState({
-    prompts: [...current.prompts, prompt],
-    selectedPromptId: prompt.id
-  });
-}
 
 async function selectPromptSelectionState(promptId) {
   const current = await loadPromptSelectionRecord();
@@ -4866,18 +4839,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error.message || "Could not save prompt selection."
-        });
-      });
-    return true;
-  }
-
-  if (message.type === "FORK_PROMPT_SELECTION") {
-    forkPromptSelectionState(message.content)
-      .then((state) => sendResponse({ ok: true, ...state }))
-      .catch((error) => {
-        sendResponse({
-          ok: false,
-          error: error.message || "Could not save the updated prompt."
         });
       });
     return true;

@@ -259,6 +259,7 @@ function fixture() {
     "createDefaultProfile", "normalizeProfile", "normalizeProfileSelectionState",
     "getSelectedProfile", "syncPromptResumeStateFromSelectedProfile",
     "applyPromptResumeStateToSelectedProfile", "renderProfileResumeSettings",
+    "showProfileSettingsStatus", "submitProfileSettingsForm",
     "setProfileResumeSettingsModalOpen", "openProfileResumeSettingsModal",
     "toggleProfileAutoSelect", "renderProfileList", "persistProfileSelection",
     "toggleProfileSelection", "loadProfileSelection", "selectProfile",
@@ -613,6 +614,8 @@ test("profile cards are compact; prompt lists live only in Settings", () => {
   assert.equal(node("profileList").querySelectorAll(".profile-item").length, 3);
   assert.equal(node("profileList").querySelectorAll(".profile-resume-settings").length, 3);
   assert.equal(node("profileList").querySelectorAll(".profile-auto-select").length, 3);
+  assert.equal(node("profileList").querySelectorAll(".profile-notes").length, 0);
+  assert.equal(node("profileList").querySelectorAll(".profile-edit").length, 0);
   assert.equal(node("profileList").querySelectorAll(".prompt-resume-item").length, 0);
   assert.equal(node("profileList").querySelectorAll(".profile-item-body").length, 0);
   assert.ok(!html.includes("workspace-save-progress-bar"));
@@ -636,6 +639,76 @@ test("Settings shows only its profile, saves one selection, and preserves other 
   assert.equal(profile("alice").selectedPromptResumeId, "a2");
   assert.equal(profile("bob").selectedPromptResumeId, "b1");
   assert.deepEqual([...ctx.profileSelectionState.selectedProfileIds], ["alice", "bob"]);
+});
+
+test("Settings edits the profile name and template while preserving resumes, notes, and other profiles", async () => {
+  const { ctx, node, profile, stored } = fixture();
+  const bobBefore = structuredClone(profile("bob"));
+  await ctx.openProfileResumeSettingsModal("alice");
+  assert.equal(node("profileSettingsNameInput").value, "Alice");
+  assert.equal(node("profileSettingsResumeTemplateInput").value, "doc-alice");
+  const resumesBefore = structuredClone(profile("alice").promptResumes);
+  node("profileSettingsNameInput").value = " Alice Updated ";
+  node("profileSettingsResumeTemplateInput").value = " doc-updated ";
+  await ctx.submitProfileSettingsForm();
+  const saved = stored().profiles.find((entry) => entry.id === "alice");
+  assert.equal(saved.name, "Alice Updated");
+  assert.equal(saved.resumeTemplateId, "doc-updated");
+  assert.equal(saved.notes, "Alice notes");
+  assert.deepEqual(saved.promptResumes, resumesBefore);
+  assert.deepEqual(structuredClone(profile("bob")), bobBefore);
+  assert.ok(node("profileResumeSettingsModalTitle").textContent.includes("Alice Updated"));
+  assert.ok(node("profileList").textContent.includes("Alice Updated"));
+  assert.equal(node("profileSettingsStatus").textContent, "Profile saved.");
+  assert.equal(node("profileSettingsSaveButton").disabled, false);
+  assert.ok(!node("profileResumeSettingsModal").classList.contains("is-hidden"));
+});
+
+test("Settings rejects empty details and blocks saving while busy", async () => {
+  const { ctx, node, profile } = fixture();
+  await ctx.openProfileResumeSettingsModal("alice");
+  node("profileSettingsNameInput").value = " ";
+  await ctx.submitProfileSettingsForm();
+  assert.equal(node("profileSettingsStatus").textContent, "Enter a profile name.");
+  node("profileSettingsNameInput").value = "Changed";
+  node("profileSettingsResumeTemplateInput").value = "";
+  await ctx.submitProfileSettingsForm();
+  assert.ok(node("profileSettingsStatus").textContent.includes("Google Doc"));
+  node("profileSettingsResumeTemplateInput").value = "changed-doc";
+  ctx.areActionButtonsDisabled = true;
+  ctx.renderProfileResumeSettings();
+  await ctx.submitProfileSettingsForm();
+  assert.equal(profile("alice").name, "Alice");
+  assert.equal(node("profileSettingsSaveButton").disabled, true);
+  assert.equal(node("profileSettingsNameInput").disabled, true);
+});
+
+test("Settings detail drafts survive resume editing and per-tab modal restoration", async () => {
+  const { ctx, node } = fixture();
+  await ctx.openProfileResumeSettingsModal("alice");
+  node("profileSettingsNameInput").value = "Draft Alice";
+  node("profileSettingsResumeTemplateInput").value = "draft-template";
+  await ctx.selectPromptResume("a2");
+  assert.equal(node("profileSettingsNameInput").value, "Draft Alice");
+  ctx.openAddPromptResumeModal();
+  ctx.setPromptResumeFormModalOpen(false);
+  assert.equal(node("profileSettingsNameInput").value, "Draft Alice");
+  ctx.openAddPromptResumeModal();
+  ctx.openManagedModalId = "promptResumeForm";
+  ctx.managedModalDrafts = {
+    profileSettingsNameInput: "Restored Alice",
+    profileSettingsResumeTemplateInput: "restored-template",
+    promptResumeLabelInput: "Restored resume",
+    promptResumeContentInput: "Restored text"
+  };
+  ctx.restoreManagedModalState();
+  ctx.setPromptResumeFormModalOpen(false);
+  assert.equal(node("profileSettingsNameInput").value, "Restored Alice");
+  assert.equal(node("profileSettingsResumeTemplateInput").value, "restored-template");
+  ctx.setProfileResumeSettingsModalOpen(false);
+  await ctx.openProfileResumeSettingsModal("bob");
+  assert.equal(node("profileSettingsNameInput").value, "Bob");
+  assert.equal(node("profileSettingsResumeTemplateInput").value, "doc-bob");
 });
 
 test("profile Auto follows its selected resume without changing another profile", async () => {

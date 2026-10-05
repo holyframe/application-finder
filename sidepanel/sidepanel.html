@@ -18,90 +18,6 @@
     ></div>
 
     <main class="app">
-      <header
-        id="homeWorkspaceSwitcher"
-        class="workspace-header-panel home-workspace-switcher is-hidden"
-        aria-label="Home workspace"
-        aria-hidden="true"
-      >
-        <div class="workspace-header-leading-actions">
-          <button
-            id="exportAppDataIconButton"
-            type="button"
-            class="workspace-export-button"
-            aria-label="Export app data"
-            title="Export app data"
-            aria-haspopup="dialog"
-            aria-controls="exportAppDataModal"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M7 10l5 5 5-5" />
-              <path d="M12 15V3" />
-            </svg>
-          </button>
-        </div>
-
-        <h2>Home workspace</h2>
-        <div class="workspace-header-actions">
-          <button
-            id="homeWorkspaceImportButton"
-            type="button"
-            class="workspace-url-icon-button workspace-import-button"
-            aria-label="Import app data"
-            title="Import app data"
-            aria-haspopup="dialog"
-            aria-controls="importAppDataModal"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M17 8l-5-5-5 5" />
-              <path d="M12 3v12" />
-            </svg>
-          </button>
-          <button
-            id="homeWorkspacePromptInfoButton"
-            type="button"
-            class="workspace-url-icon-button workspace-prompt-info-button is-hidden"
-            aria-label="View or update AI prompt"
-            title="AI prompt"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 10v6" />
-              <path d="M12 7h.01" />
-            </svg>
-          </button>
-          <button
-            id="homeWorkspaceExchangeButton"
-            type="button"
-            class="workspace-view-exchange-button"
-            aria-label="Exchange with Application workspace"
-            title="Exchange with Application workspace"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 7h11l-3-3" />
-              <path d="m18 7-3 3" />
-              <path d="M17 17H6l3 3" />
-              <path d="m6 17 3-3" />
-            </svg>
-          </button>
-          <button
-            id="homeCancelProcessButton"
-            type="button"
-            class="workspace-cancel-process-button is-hidden"
-            aria-label="Cancel save process"
-            title="Cancel process"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="m9 9 6 6" />
-              <path d="m15 9-6 6" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
       <section class="card prompt-resume-selection-card">
         <div class="application-actions-grid">
           <div class="application-save-section">
@@ -145,6 +61,49 @@
                   </svg>
                 </button>
               </div>
+              <button
+                id="exportAppDataIconButton"
+                type="button"
+                class="secondary-button home-data-transfer-button"
+                aria-label="Export app data"
+                title="Export app data"
+                aria-haspopup="dialog"
+                aria-controls="exportAppDataModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M12 15V3" />
+                </svg>
+              </button>
+              <button
+                id="importAppDataIconButton"
+                type="button"
+                class="secondary-button home-data-transfer-button"
+                aria-label="Import app data"
+                title="Import app data"
+                aria-haspopup="dialog"
+                aria-controls="importAppDataModal"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <path d="M17 8l-5-5-5 5" />
+                  <path d="M12 3v12" />
+                </svg>
+              </button>
+              <button
+                id="homeCancelProcessButton"
+                type="button"
+                class="workspace-cancel-process-button is-hidden"
+                aria-label="Cancel save process"
+                title="Cancel process"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m9 9 6 6" />
+                  <path d="m15 9-6 6" />
+                </svg>
+              </button>
             </div>
           </div>
           <div class="jobright-open-section">
@@ -864,14 +823,27 @@
         id="profileResumeSettingsModalBackdrop"
         type="button"
         class="modal-backdrop"
-        aria-label="Close profile resume settings"
+        aria-label="Close profile settings"
       ></button>
       <div class="modal-panel">
         <div class="modal-header">
-          <h2 id="profileResumeSettingsModalTitle">Prompt resume settings</h2>
+          <h2 id="profileResumeSettingsModalTitle">Profile settings</h2>
           <button id="profileResumeSettingsModalCloseButton" type="button" class="modal-close-button" aria-label="Close">×</button>
         </div>
-        <p class="modal-help">Each profile keeps one prompt resume selected. The first resume is used by default. Changes are saved immediately. Manage Auto from the profile row.</p>
+        <div class="modal-form">
+          <div class="config-field">
+            <label class="config-label" for="profileSettingsNameInput">Profile name</label>
+            <input id="profileSettingsNameInput" type="text" class="config-input" autocomplete="off" />
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="profileSettingsResumeTemplateInput">Resume Template</label>
+            <input id="profileSettingsResumeTemplateInput" type="text" class="config-input" placeholder="Google Doc URL or document ID" autocomplete="off" />
+          </div>
+          <p id="profileSettingsStatus" class="config-status is-hidden" aria-live="polite"></p>
+          <button id="profileSettingsSaveButton" type="button" class="primary-button modal-action-button">Save profile</button>
+        </div>
+        <h3 class="profile-settings-section-title">Prompt resumes</h3>
+        <p class="modal-help">Each profile keeps one prompt resume selected. The first resume is used by default. Prompt resume changes are saved immediately. Manage Auto from the profile row.</p>
         <div id="profilePromptResumeSection" class="profile-prompt-resume-section">
           <ul id="promptResumeList" class="prompt-resume-list" aria-label="Prompt resumes"></ul>
         </div>
@@ -1065,105 +1037,10 @@
       id="splitWindowsModal"
       class="modal split-windows-modal is-workspace-page is-hidden"
       role="region"
-      aria-labelledby="splitWindowsModalTitle"
+      aria-label="Application workspace"
       aria-hidden="true"
     >
       <div class="modal-panel">
-        <header class="modal-header workspace-header-panel">
-          <div class="workspace-header-leading-actions">
-            <button
-              id="applicationWorkspaceExportButton"
-              type="button"
-              class="workspace-export-button"
-              aria-label="Export app data"
-              title="Export app data"
-              aria-haspopup="dialog"
-              aria-controls="exportAppDataModal"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <path d="M7 10l5 5 5-5" />
-                <path d="M12 15V3" />
-              </svg>
-            </button>
-            <button
-              id="applicationWorkspaceNotesButton"
-              type="button"
-              class="workspace-notes-button"
-              aria-label="Open profile notes"
-              title="Profile notes"
-              disabled
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 4h16v12l-4 4H4z" />
-                <path d="M16 20v-4h4" />
-                <path d="M8 8h8" />
-                <path d="M8 12h5" />
-              </svg>
-            </button>
-          </div>
-          <h2 id="splitWindowsModalTitle">Application workspace</h2>
-          <div class="workspace-header-actions split-windows-header-actions">
-            <button
-              id="applicationWorkspaceImportButton"
-              type="button"
-              class="workspace-url-icon-button workspace-import-button"
-              aria-label="Import app data"
-              title="Import app data"
-              aria-haspopup="dialog"
-              aria-controls="importAppDataModal"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <path d="M17 8l-5-5-5 5" />
-                <path d="M12 3v12" />
-              </svg>
-            </button>
-            <button
-              id="applicationWorkspacePromptInfoButton"
-              type="button"
-              class="workspace-url-icon-button workspace-prompt-info-button is-hidden"
-              aria-label="View or update AI prompt"
-              title="AI prompt"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 10v6" />
-                <path d="M12 7h.01" />
-              </svg>
-            </button>
-            <button
-              id="splitWindowsModalCloseButton"
-              type="button"
-              class="modal-close-button"
-              aria-label="Close"
-              title="Close"
-            >
-              <span class="split-windows-view-exchange-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M7 7h11l-3-3" />
-                  <path d="m18 7-3 3" />
-                  <path d="M17 17H6l3 3" />
-                  <path d="m6 17 3-3" />
-                </svg>
-              </span>
-            </button>
-            <button
-              id="applicationCancelProcessButton"
-              type="button"
-              class="workspace-cancel-process-button is-hidden"
-              aria-label="Cancel save process"
-              title="Cancel process"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="m9 9 6 6" />
-                <path d="m15 9-6 6" />
-              </svg>
-            </button>
-          </div>
-        </header>
-
         <div
           id="splitWindowsPreviewView"
           class="split-windows-preview-view is-hidden"
@@ -1236,6 +1113,34 @@
                   <path d="M14 11v6" />
                   <path d="M6 7l1 14h10l1-14" />
                   <path d="M9 7V4h6v3" />
+                </svg>
+              </button>
+              <button
+                id="applicationWorkspaceNotesButton"
+                type="button"
+                class="workspace-url-icon-button"
+                aria-label="Open profile notes"
+                title="Profile notes"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 4h16v12l-4 4H4z" />
+                  <path d="M16 20v-4h4" />
+                  <path d="M8 8h8" />
+                  <path d="M8 12h5" />
+                </svg>
+              </button>
+              <button
+                id="applicationCancelProcessButton"
+                type="button"
+                class="workspace-cancel-process-button is-hidden"
+                aria-label="Cancel save process"
+                title="Cancel process"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m9 9 6 6" />
+                  <path d="m15 9-6 6" />
                 </svg>
               </button>
             </div>

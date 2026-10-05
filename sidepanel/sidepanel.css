@@ -112,46 +112,6 @@ input {
   display: none;
 }
 
-.home-workspace-switcher,
-.split-windows-modal.is-workspace-page .workspace-header-panel {
-  position: sticky;
-  top: 8px;
-  z-index: 20;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto auto auto;
-  align-items: center;
-  column-gap: 10px;
-  row-gap: 3px;
-  min-width: 0;
-  border: 1px solid rgba(143, 147, 255, 0.28);
-  border-radius: 12px;
-  padding: 7px 8px;
-  background: linear-gradient(135deg, #11162d 0%, #202858 100%);
-  box-shadow: 0 10px 26px rgba(7, 11, 45, 0.28);
-  backdrop-filter: blur(8px);
-}
-
-.home-workspace-switcher.is-hidden {
-  display: none;
-}
-
-.home-workspace-switcher h2,
-.split-windows-modal.is-workspace-page .workspace-header-panel h2 {
-  grid-column: 2;
-  grid-row: 1;
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  color: #f4f5ff;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  text-align: center;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 .job-description-card.is-hidden { display: none; }
 .profile-item.has-no-model-progress[data-save-status="running"] {
   border-color: var(--primary);
@@ -323,87 +283,8 @@ input {
   .no-model-profile-steps li[data-connector-state="active"]::before { animation: none; }
 }
 
-.workspace-header-actions {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.workspace-header-actions .workspace-prompt-info-button,
-.workspace-header-actions .workspace-import-button {
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-}
-
-.workspace-header-actions .workspace-prompt-info-button svg,
-.workspace-header-actions .workspace-import-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.workspace-header-actions .workspace-view-exchange-button,
-.workspace-header-actions .modal-close-button {
-  grid-column: auto;
-  grid-row: auto;
-}
-
 .workspace-cancel-process-button.is-hidden {
   display: none;
-}
-
-.workspace-header-leading-actions {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: start;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.workspace-settings-button,
-.workspace-export-button,
-.workspace-notes-button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0;
-  cursor: pointer;
-  color: #f4f5ff;
-  background: rgba(143, 147, 255, 0.2);
-}
-
-.workspace-settings-button svg,
-.workspace-export-button svg,
-.workspace-notes-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.workspace-settings-button:hover,
-.workspace-export-button:hover:not(:disabled),
-.workspace-notes-button:hover:not(:disabled) {
-  background: rgba(143, 147, 255, 0.34);
-}
-
-.workspace-settings-button:focus-visible,
-.workspace-export-button:focus-visible,
-.workspace-notes-button:focus-visible {
-  outline: 3px solid rgba(175, 178, 255, 0.38);
-  outline-offset: 2px;
-}
-
-.workspace-settings-button:disabled,
-.workspace-export-button:disabled,
-.workspace-notes-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .export-app-data-option {
@@ -413,34 +294,6 @@ input {
 .export-app-data-modal .modal-help code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.95em;
-}
-
-.workspace-view-exchange-button,
-.split-windows-modal.is-workspace-page .modal-close-button {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0;
-  cursor: pointer;
-  color: #f4f5ff;
-  background: rgba(143, 147, 255, 0.2);
-}
-
-.workspace-view-exchange-button:hover:not(:disabled),
-.split-windows-modal.is-workspace-page .modal-close-button:hover:not(:disabled) {
-  background: rgba(143, 147, 255, 0.34);
-}
-
-.workspace-view-exchange-button:disabled,
-.split-windows-modal.is-workspace-page .modal-close-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
 }
 
 .workspace-cancel-process-button {
@@ -473,12 +326,6 @@ input {
 .workspace-cancel-process-button svg {
   width: 16px;
   height: 16px;
-}
-
-.workspace-view-exchange-button:focus-visible,
-.split-windows-modal.is-workspace-page .modal-close-button:focus-visible {
-  outline: 3px solid rgba(175, 178, 255, 0.38);
-  outline-offset: 2px;
 }
 
 .hero {
@@ -658,9 +505,40 @@ h1 {
 }
 
 .home-save-actions {
+  grid-auto-flow: column;
+  grid-auto-columns: 30px;
   grid-template-columns: max-content;
   width: max-content;
   justify-self: center;
+}
+
+.home-save-actions .home-data-transfer-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+}
+
+.home-save-actions .home-data-transfer-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.home-save-actions .workspace-cancel-process-button {
+  width: 30px;
+  height: 30px;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .home-tab-cleanup-actions {
@@ -1297,6 +1175,15 @@ h1 {
 
 .profile-resume-settings-modal .modal-panel {
   width: min(100%, 680px);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.profile-settings-section-title {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
 }
 
 .profile-resume-settings-modal .profile-prompt-resume-section {
@@ -2244,15 +2131,6 @@ textarea:focus {
 
 .modal-close-button:hover {
   background: rgba(84, 87, 255, 0.22);
-}
-
-.split-windows-view-exchange-icon {
-  display: none;
-}
-
-.split-windows-modal.is-workspace-page .split-windows-view-exchange-icon {
-  display: grid;
-  place-items: center;
 }
 
 .modal-help {

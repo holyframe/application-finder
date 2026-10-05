@@ -61,16 +61,10 @@ const actionSettingsDialogs = {
   }
 };
 const splitWindowsModal = document.querySelector("#splitWindowsModal");
-const splitWindowsModalCloseButton = document.querySelector("#splitWindowsModalCloseButton");
-const homeWorkspaceSwitcher = document.querySelector("#homeWorkspaceSwitcher");
-const homeWorkspaceExchangeButton = document.querySelector(
-  "#homeWorkspaceExchangeButton"
-);
 const homeCancelProcessButton = document.querySelector("#homeCancelProcessButton");
 const applicationCancelProcessButton = document.querySelector(
   "#applicationCancelProcessButton"
 );
-const splitWindowsModalTitle = document.querySelector("#splitWindowsModalTitle");
 const splitWindowsPreviewView = document.querySelector("#splitWindowsPreviewView");
 const splitWindowsPreviewUrl = document.querySelector("#splitWindowsPreviewUrl");
 const applicationWorkspaceUrlInput = document.querySelector(
@@ -201,9 +195,6 @@ const emptyLogs = document.querySelector("#emptyLogs");
 const clearLogsButton = document.querySelector("#clearLogsButton");
 
 const exportAppDataIconButton = document.querySelector("#exportAppDataIconButton");
-const applicationWorkspaceExportButton = document.querySelector(
-  "#applicationWorkspaceExportButton"
-);
 const configModal = document.querySelector("#configModal");
 const configModalBackdrop = document.querySelector("#configModalBackdrop");
 const configModalCloseButton = document.querySelector("#configModalCloseButton");
@@ -245,11 +236,8 @@ const importIncludePromptResumeInfoCheckbox = document.querySelector(
   "#importIncludePromptResumeInfoCheckbox"
 );
 const importAppDataFileInput = document.querySelector("#importAppDataFileInput");
-const homeWorkspaceImportButton = document.querySelector(
-  "#homeWorkspaceImportButton"
-);
-const applicationWorkspaceImportButton = document.querySelector(
-  "#applicationWorkspaceImportButton"
+const importAppDataIconButton = document.querySelector(
+  "#importAppDataIconButton"
 );
 const appDataTransferStatus = document.querySelector("#appDataTransferStatus");
 const APP_DATA_EXPORT_DIRECTORY_IDB = {
@@ -276,12 +264,6 @@ const promptFormModalCancelButton = document.querySelector("#promptFormModalCanc
 const promptFormModalSubmitButton = document.querySelector("#promptFormModalSubmitButton");
 const promptFormModalTitle = document.querySelector("#promptFormModalTitle");
 const promptContentInput = document.querySelector("#promptContentInput");
-const applicationWorkspacePromptInfoButton = document.querySelector(
-  "#applicationWorkspacePromptInfoButton"
-);
-const homeWorkspacePromptInfoButton = document.querySelector(
-  "#homeWorkspacePromptInfoButton"
-);
 const jobDescriptionList = document.querySelector("#jobDescriptionList");
 const jobDescriptionFormModal = document.querySelector("#jobDescriptionFormModal");
 const jobDescriptionFormModalBackdrop = document.querySelector("#jobDescriptionFormModalBackdrop");
@@ -296,6 +278,10 @@ const profileResumeSettingsModalBackdrop = document.querySelector("#profileResum
 const profileResumeSettingsModalCloseButton = document.querySelector("#profileResumeSettingsModalCloseButton");
 const profileResumeSettingsAddButton = document.querySelector("#profileResumeSettingsAddButton");
 const profileResumeSettingsDoneButton = document.querySelector("#profileResumeSettingsDoneButton");
+const profileSettingsNameInput = document.querySelector("#profileSettingsNameInput");
+const profileSettingsResumeTemplateInput = document.querySelector("#profileSettingsResumeTemplateInput");
+const profileSettingsSaveButton = document.querySelector("#profileSettingsSaveButton");
+const profileSettingsStatus = document.querySelector("#profileSettingsStatus");
 const addProfileButton = document.querySelector("#addProfileButton");
 const profileFormModal = document.querySelector("#profileFormModal");
 const profileFormModalTitle = document.querySelector("#profileFormModalTitle");
@@ -348,8 +334,6 @@ let savePostProcessState = null;
 let isSavePostProcessRequestPending = false;
 let currentSaveWorkspace = null;
 const saveWorkspacesByTabId = new Map();
-let currentSaveWorkspaceSidePanelView = "workspace";
-let currentDefaultSidePanelView = "home";
 let currentEmptyWorkspaceTab = "job";
 let currentEmptyWorkspaceUrls = {
   job: "",
@@ -394,8 +378,6 @@ function createTabState() {
     savePostProcessState: null,
     isSavePostProcessRequestPending: false,
     areActionButtonsDisabled: false,
-    saveWorkspaceSidePanelView: "workspace",
-    defaultSidePanelView: "home",
     emptyWorkspaceTab: "job",
     emptyWorkspaceUrls: { job: "", resume: "" },
     isBuildResumeContextModalOpen: false,
@@ -547,7 +529,12 @@ async function restoreTabSession() {
     if (!workspace || typeof workspace !== "object" || workspace.sessionType !== "save-workspace") {
       return;
     }
-    saveWorkspacesByTabId.set(tabId, { ...workspace, chatGptTabId: tabId });
+    const restoredWorkspace = { ...workspace, chatGptTabId: tabId };
+    if (restoredWorkspace.storedExchangeUrl) {
+      restoredWorkspace.chatGptUrl = restoredWorkspace.storedExchangeUrl;
+    }
+    delete restoredWorkspace.storedExchangeUrl;
+    saveWorkspacesByTabId.set(tabId, restoredWorkspace);
   });
 
   const tabStates =
@@ -595,8 +582,6 @@ function captureActiveTabState() {
   state.savePostProcessState = savePostProcessState;
   state.isSavePostProcessRequestPending = isSavePostProcessRequestPending;
   state.areActionButtonsDisabled = areActionButtonsDisabled;
-  state.saveWorkspaceSidePanelView = currentSaveWorkspaceSidePanelView;
-  state.defaultSidePanelView = currentDefaultSidePanelView;
   state.emptyWorkspaceTab = currentEmptyWorkspaceTab;
   state.emptyWorkspaceUrls = currentEmptyWorkspaceUrls;
   state.isBuildResumeContextModalOpen = isBuildResumeContextModalOpen;
@@ -623,8 +608,6 @@ function loadTabStateIntoRegisters(tabId) {
   savePostProcessState = state.savePostProcessState;
   isSavePostProcessRequestPending = state.isSavePostProcessRequestPending;
   areActionButtonsDisabled = state.areActionButtonsDisabled;
-  currentSaveWorkspaceSidePanelView = state.saveWorkspaceSidePanelView;
-  currentDefaultSidePanelView = state.defaultSidePanelView;
   currentEmptyWorkspaceTab = state.emptyWorkspaceTab;
   currentEmptyWorkspaceUrls = state.emptyWorkspaceUrls;
   isBuildResumeContextModalOpen = state.isBuildResumeContextModalOpen;
@@ -801,11 +784,6 @@ function activateSaveWorkspaceTab(chatGptTabId) {
     return false;
   }
 
-  const workspaceTabState = getTabState(chatGptTabId);
-  if (workspaceTabState) {
-    workspaceTabState.saveWorkspaceSidePanelView = "workspace";
-  }
-
   switchActiveTab(chatGptTabId);
 
   if (activeTabId !== chatGptTabId) {
@@ -813,7 +791,6 @@ function activateSaveWorkspaceTab(chatGptTabId) {
     loadTabStateIntoRegisters(chatGptTabId);
   }
 
-  currentSaveWorkspaceSidePanelView = "workspace";
   syncCurrentSaveWorkspace();
 
   if (!currentSaveWorkspace) {
@@ -858,7 +835,7 @@ function getManagedModals() {
         returnFocus: false,
         preserveProfile: true
       }),
-      fields: []
+      fields: [profileSettingsNameInput, profileSettingsResumeTemplateInput]
     },
     {
       id: "promptResumeForm",
@@ -866,7 +843,8 @@ function getManagedModals() {
       setOpen: (isOpen) => setPromptResumeFormModalOpen(isOpen, {
         returnToSettings: false
       }),
-      fields: [promptResumeLabelInput, promptResumeContentInput]
+      fields: [promptResumeLabelInput, promptResumeContentInput,
+        profileSettingsNameInput, profileSettingsResumeTemplateInput]
     },
     {
       id: "promptForm",
@@ -954,7 +932,7 @@ function restoreManagedModalState() {
   promptResumeFormMode = preservedPromptResumeFormMode;
   editingPromptResumeId = preservedEditingPromptResumeId;
 
-  renderProfileResumeSettings();
+  renderProfileResumeSettings({ resetFields: true });
   getManagedModals()
     .find((modal) => modal.id === targetModalId)
     ?.fields.forEach((field) => {
@@ -1540,7 +1518,7 @@ function openEditProfileModal(profileId) {
   setProfileFormModalOpen(true);
 }
 
-function renderProfileResumeSettings() {
+function renderProfileResumeSettings({ resetFields = false } = {}) {
   if (!profileResumeSettingsProfileId) return;
 
   const profile = profileSelectionState.profiles.find(
@@ -1555,7 +1533,24 @@ function renderProfileResumeSettings() {
   profileSelectionState.selectedProfileId = profile.id;
   syncPromptResumeStateFromSelectedProfile();
   if (profileResumeSettingsModalTitle) {
-    profileResumeSettingsModalTitle.textContent = `Prompt resumes · ${profile.name}`;
+    profileResumeSettingsModalTitle.textContent = `Profile settings · ${profile.name}`;
+  }
+  const isSaving = profileSettingsSaveButton?.dataset.saving === "true";
+  [
+    [profileSettingsNameInput, profile.name],
+    [profileSettingsResumeTemplateInput, profile.resumeTemplateId || ""]
+  ].forEach(([input, value]) => {
+    if (!input) return;
+    if (resetFields || input.dataset.profileId !== profile.id) {
+      input.value = value;
+      input.dataset.profileId = profile.id;
+      showProfileSettingsStatus();
+    }
+    input.disabled = areActionButtonsDisabled || isSaving;
+  });
+  if (profileSettingsSaveButton) {
+    profileSettingsSaveButton.disabled = areActionButtonsDisabled || isSaving;
+    profileSettingsSaveButton.textContent = isSaving ? "Saving..." : "Save profile";
   }
   if (profileResumeSettingsAddButton) {
     profileResumeSettingsAddButton.disabled = areActionButtonsDisabled;
@@ -1587,6 +1582,11 @@ function setProfileResumeSettingsModalOpen(
 
   if (!preserveProfile) {
     profileResumeSettingsProfileId = null;
+    if (profileSettingsNameInput) profileSettingsNameInput.dataset.profileId = "";
+    if (profileSettingsResumeTemplateInput) {
+      profileSettingsResumeTemplateInput.dataset.profileId = "";
+    }
+    showProfileSettingsStatus();
   }
   if (returnFocus) {
     Array.from(profileList?.querySelectorAll(".profile-item") || [])
@@ -1599,7 +1599,62 @@ async function openProfileResumeSettingsModal(profileId) {
   if (areActionButtonsDisabled) return;
   await selectProfile(profileId);
   profileResumeSettingsProfileId = profileId;
+  renderProfileResumeSettings({ resetFields: true });
   setProfileResumeSettingsModalOpen(true);
+}
+
+function showProfileSettingsStatus(type = "", message = "") {
+  if (!profileSettingsStatus) return;
+  profileSettingsStatus.classList.toggle("is-hidden", !message);
+  profileSettingsStatus.classList.toggle("is-error", type === "error");
+  profileSettingsStatus.classList.toggle("is-success", type === "success");
+  profileSettingsStatus.textContent = message;
+}
+
+async function submitProfileSettingsForm() {
+  if (areActionButtonsDisabled || profileSettingsSaveButton?.dataset.saving === "true") {
+    return;
+  }
+  const profileId = profileResumeSettingsProfileId;
+  const profile = profileSelectionState.profiles.find((entry) => entry.id === profileId);
+  if (!profile) return;
+
+  const name = profileSettingsNameInput?.value.trim() || "";
+  const resumeTemplateId = profileSettingsResumeTemplateInput?.value.trim() || "";
+  showProfileSettingsStatus();
+  if (!name) {
+    showProfileSettingsStatus("error", "Enter a profile name.");
+    profileSettingsNameInput?.focus();
+    return;
+  }
+  if (!resumeTemplateId) {
+    showProfileSettingsStatus("error", "Enter a Resume Google Doc URL or document ID.");
+    profileSettingsResumeTemplateInput?.focus();
+    return;
+  }
+
+  if (profileSettingsSaveButton) profileSettingsSaveButton.dataset.saving = "true";
+  profileSelectionState.profiles = profileSelectionState.profiles.map((entry) =>
+    entry.id === profileId ? { ...entry, name, resumeTemplateId } : entry
+  );
+  renderProfileResumeSettings();
+  try {
+    await persistProfileSelection(`"${name}" updated.`);
+    if (profileResumeSettingsProfileId === profileId) {
+      renderProfileResumeSettings({ resetFields: true });
+      showProfileSettingsStatus("success", "Profile saved.");
+    }
+  } catch (error) {
+    console.error(error);
+    addLog("error", error.message || "Could not update profile.");
+    await loadProfileSelection();
+    if (profileResumeSettingsProfileId === profileId) {
+      showProfileSettingsStatus("error", error.message || "Could not update profile.");
+    }
+  } finally {
+    if (profileSettingsSaveButton) profileSettingsSaveButton.dataset.saving = "false";
+    renderProfileResumeSettings();
+  }
 }
 
 async function toggleProfileAutoSelect(profileId) {
@@ -1793,8 +1848,8 @@ function renderProfileList() {
     settingsButton.type = "button";
     settingsButton.className = "profile-resume-settings";
     settingsButton.disabled = areActionButtonsDisabled;
-    settingsButton.title = "Prompt resume settings";
-    settingsButton.setAttribute("aria-label", `Prompt resume settings for ${profile.name}`);
+    settingsButton.title = "Profile settings";
+    settingsButton.setAttribute("aria-label", `Profile settings for ${profile.name}`);
     settingsButton.setAttribute("aria-haspopup", "dialog");
     settingsButton.setAttribute("aria-controls", "profileResumeSettingsModal");
     settingsButton.innerHTML = `
@@ -1811,45 +1866,6 @@ function renderProfileList() {
       openProfileResumeSettingsModal(profile.id)
     );
 
-    const notesButton = document.createElement("button");
-    notesButton.type = "button";
-    notesButton.className = "profile-notes";
-    notesButton.setAttribute("aria-label", `Notes for ${profile.name}`);
-    notesButton.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6h6" />
-        <path d="M16 13H8" />
-        <path d="M16 17H8" />
-        <path d="M10 9H8" />
-      </svg>
-    `;
-    notesButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-
-
-      if (profile.id !== profileSelectionState.selectedProfileId) {
-        await selectProfile(profile.id);
-      }
-
-      openProfileNotesModal(profile.id);
-    });
-
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "profile-edit";
-    editButton.setAttribute("aria-label", `Edit ${profile.name}`);
-    editButton.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-      </svg>
-    `;
-    editButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openEditProfileModal(profile.id);
-    });
-
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "profile-remove";
@@ -1861,7 +1877,7 @@ function renderProfileList() {
       removeProfile(profile.id);
     });
 
-    actions.append(autoButton, settingsButton, notesButton, editButton, removeButton);
+    actions.append(autoButton, settingsButton, removeButton);
     header.append(dragHandle, selectionCheckbox, copy, actions);
 
     item.append(header);
@@ -2424,19 +2440,13 @@ function setSaveButtonsDisabled(disabled) {
   if (saveConfigButton) saveConfigButton.disabled = disabled;
   if (aiProviderInput) aiProviderInput.disabled = disabled;
   if (exportAppDataIconButton) exportAppDataIconButton.disabled = disabled;
-  if (applicationWorkspaceExportButton) {
-    applicationWorkspaceExportButton.disabled = disabled;
-  }
   if (exportAppDataModalConfirmButton) {
     exportAppDataModalConfirmButton.disabled = disabled;
   }
   if (exportIncludePromptResumeInfoCheckbox) {
     exportIncludePromptResumeInfoCheckbox.disabled = disabled;
   }
-  if (homeWorkspaceImportButton) homeWorkspaceImportButton.disabled = disabled;
-  if (applicationWorkspaceImportButton) {
-    applicationWorkspaceImportButton.disabled = disabled;
-  }
+  if (importAppDataIconButton) importAppDataIconButton.disabled = disabled;
   if (importAppDataModalConfirmButton) {
     importAppDataModalConfirmButton.disabled = disabled;
   }
@@ -2446,7 +2456,7 @@ function setSaveButtonsDisabled(disabled) {
   if (addProfileButton) addProfileButton.disabled = disabled;
   profileList
     ?.querySelectorAll(
-      ".profile-resume-settings, .profile-auto-select, .profile-notes, " +
+      ".profile-resume-settings, .profile-auto-select, " +
       ".profile-selection-checkbox, .profile-selection-label"
     )
     .forEach((control) => {
@@ -2470,6 +2480,7 @@ function setSaveButtonsDisabled(disabled) {
   if (profileFormModalSubmitButton) profileFormModalSubmitButton.disabled = disabled;
   if (profileNotesModalSubmitButton) profileNotesModalSubmitButton.disabled = disabled;
   if (profileResumeSettingsAddButton) profileResumeSettingsAddButton.disabled = disabled;
+  renderProfileResumeSettings();
   if (promptResumeFormModalSubmitButton) promptResumeFormModalSubmitButton.disabled = disabled;
   if (promptFormModalSubmitButton) promptFormModalSubmitButton.disabled = disabled;
   if (jobDescriptionFormModalSubmitButton) jobDescriptionFormModalSubmitButton.disabled = disabled;
@@ -3100,9 +3111,6 @@ function renderSavePostProcessControls() {
   const hasState = isSavePostProcessActive();
   const applicationControlsVisible = hasState;
   const usesProfileCancelButtons = hasState && isNoModelSaveMode();
-  // Only tabs that own/participate in this save get a locked workspace switch.
-  const exchangeDisabled = hasState;
-
   homeCancelProcessButton?.classList.toggle(
     "is-hidden",
     !hasState || usesProfileCancelButtons
@@ -3117,13 +3125,6 @@ function renderSavePostProcessControls() {
   }
   if (applicationCancelProcessButton) {
     applicationCancelProcessButton.disabled = isSavePostProcessRequestPending;
-  }
-  if (homeWorkspaceExchangeButton) {
-    homeWorkspaceExchangeButton.disabled = exchangeDisabled;
-  }
-  if (splitWindowsModalCloseButton) {
-    splitWindowsModalCloseButton.disabled =
-      exchangeDisabled;
   }
 }
 
@@ -3146,7 +3147,7 @@ function setSavePostProcessStateForTab(tabId, state) {
 
 // The service worker stores one save-progress record per owning tab. Spread that
 // record across every Chrome tab involved in the run so only those tabs show
-// progress / locked workspace switching.
+// progress and cancellation controls.
 function applySavePostProcessStates(statesByTabId) {
   const map =
     statesByTabId && typeof statesByTabId === "object" ? statesByTabId : {};
@@ -3964,7 +3965,6 @@ let promptState = {
   content: "",
   updatedAt: ""
 };
-let promptFormMode = "edit";
 
 function applyPromptSelectionState(state) {
   const prompts = Array.isArray(state?.prompts)
@@ -3994,22 +3994,19 @@ function applyPromptSelectionState(state) {
   };
 }
 
-function setPromptFormModalOpen(isOpen, { mode = promptFormMode } = {}) {
+function setPromptFormModalOpen(isOpen) {
   if (!promptFormModal) return;
 
-  promptFormMode = mode === "fork" ? "fork" : "edit";
   promptFormModal.classList.toggle("is-hidden", !isOpen);
   promptFormModal.setAttribute("aria-hidden", String(!isOpen));
 
   if (isOpen) {
     if (promptFormModalTitle) {
-      promptFormModalTitle.textContent =
-        promptFormMode === "fork" ? "Update GPT Prompt" : "Edit Prompt";
+      promptFormModalTitle.textContent = "Edit Prompt";
     }
     const submitLabel = promptFormModalSubmitButton?.querySelector("span");
     if (submitLabel) {
-      submitLabel.textContent =
-        promptFormMode === "fork" ? "Save Updated Prompt" : "Save Changes";
+      submitLabel.textContent = "Save Changes";
     }
     if (promptContentInput) {
       promptContentInput.value = promptState.content || "";
@@ -4026,22 +4023,13 @@ function setPromptFormModalOpen(isOpen, { mode = promptFormMode } = {}) {
   if (submitLabel) {
     submitLabel.textContent = "Save Changes";
   }
-  promptFormMode = "edit";
   promptList
     ?.querySelector(".prompt-selection-edit, .prompt-selection-list-empty-action")
     ?.focus();
 }
 
 function openEditPromptModal() {
-  setPromptFormModalOpen(true, { mode: "edit" });
-}
-
-function openWorkspacePromptInfoModal() {
-  if (!promptState.content?.trim()) {
-    showStatus("error", "No AI prompt is selected yet. Add one in App settings.");
-    return;
-  }
-  setPromptFormModalOpen(true, { mode: "fork" });
+  setPromptFormModalOpen(true);
 }
 
 function renderPromptCard() {
@@ -4199,7 +4187,6 @@ async function loadPromptSelection() {
 
     applyPromptSelectionState(response);
     renderPromptCard();
-    updateWorkspacePromptInfoButtons();
   } catch (error) {
     console.error(error);
   }
@@ -4207,7 +4194,6 @@ async function loadPromptSelection() {
 
 async function submitPromptForm() {
   const content = promptContentInput?.value.trim() || "";
-  const isFork = promptFormMode === "fork";
 
   if (!content) {
     promptContentInput?.focus();
@@ -4220,7 +4206,7 @@ async function submitPromptForm() {
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: isFork ? "FORK_PROMPT_SELECTION" : "SAVE_PROMPT_SELECTION",
+      type: "SAVE_PROMPT_SELECTION",
       content
     });
 
@@ -4231,13 +4217,7 @@ async function submitPromptForm() {
     applyPromptSelectionState(response);
     setPromptFormModalOpen(false);
     renderPromptCard();
-    updateWorkspacePromptInfoButtons();
-    addLog(
-      "success",
-      isFork
-        ? "Updated AI prompt saved and selected. Previous prompt kept in settings."
-        : "AI prompt saved."
-    );
+    addLog("success", "AI prompt saved.");
   } catch (error) {
     console.error(error);
     showStatus("error", error.message || "Could not save prompt.");
@@ -4246,35 +4226,6 @@ async function submitPromptForm() {
       promptFormModalSubmitButton.disabled = false;
     }
   }
-}
-
-function updateWorkspacePromptInfoButtons() {
-  const showButton = Boolean(promptState.content?.trim());
-  const disabled = !showButton || areActionButtonsDisabled;
-
-  [applicationWorkspacePromptInfoButton, homeWorkspacePromptInfoButton].forEach(
-    (button) => {
-      if (!button) {
-        return;
-      }
-      button.classList.toggle("is-hidden", !showButton);
-      button.disabled = disabled;
-    }
-  );
-
-  updateWorkspaceImportButtons();
-}
-
-function updateWorkspaceImportButtons() {
-  [homeWorkspaceImportButton, applicationWorkspaceImportButton].forEach(
-    (button) => {
-      if (!button) {
-        return;
-      }
-      button.classList.remove("is-hidden");
-      button.disabled = areActionButtonsDisabled;
-    }
-  );
 }
 
 let jobDescriptionState = {
@@ -4561,19 +4512,12 @@ function setExportAppDataModalOpen(isOpen, { returnFocus = true } = {}) {
   }
 
   if (returnFocus) {
-    const focusTarget =
-      (!splitWindowsModal?.classList.contains("is-hidden") &&
-        applicationWorkspaceExportButton) ||
-      exportAppDataIconButton;
-    focusTarget?.focus();
+    exportAppDataIconButton?.focus();
   }
 }
 
 function openExportAppDataModal() {
-  if (
-    exportAppDataIconButton?.disabled &&
-    applicationWorkspaceExportButton?.disabled
-  ) {
+  if (exportAppDataIconButton?.disabled) {
     return;
   }
   setExportAppDataModalOpen(true);
@@ -4594,20 +4538,12 @@ function setImportAppDataModalOpen(isOpen, { returnFocus = true } = {}) {
   }
 
   if (returnFocus) {
-    const focusTarget =
-      (!homeWorkspaceSwitcher?.classList.contains("is-hidden") &&
-        homeWorkspaceImportButton) ||
-      applicationWorkspaceImportButton ||
-      homeWorkspaceImportButton;
-    focusTarget?.focus();
+    importAppDataIconButton?.focus();
   }
 }
 
 function openImportAppDataModal() {
-  if (
-    homeWorkspaceImportButton?.disabled &&
-    applicationWorkspaceImportButton?.disabled
-  ) {
+  if (importAppDataIconButton?.disabled) {
     return;
   }
   setImportAppDataModalOpen(true);
@@ -5817,82 +5753,6 @@ async function downloadSaveWorkspaceResume() {
   }
 }
 
-async function exchangeSaveWorkspaceUrls() {
-  if (areActionButtonsDisabled || !hasActiveSaveWorkspaceForCurrentTab()) {
-    return;
-  }
-
-  const workspace = beginSaveWorkspaceAction(
-    "Exchange clicked. Switching the main tab URL..."
-  );
-  if (!workspace) {
-    return;
-  }
-
-  const ownerTabId = workspace.chatGptTabId;
-
-  try {
-    const mainTab = await chrome.tabs.get(workspace.chatGptTabId);
-    const mainTabUrl = String(mainTab?.url || "").trim();
-    const informationUrl = String(workspace.jobUrl || "").trim();
-    const storedChatUrl = String(workspace.storedExchangeUrl || "").trim();
-    const isRestoringChat = Boolean(storedChatUrl);
-    const nextMainTabUrl = isRestoringChat ? storedChatUrl : informationUrl;
-
-    if (!mainTabUrl || !nextMainTabUrl) {
-      throw new Error("Could not identify the URL needed for Exchange.");
-    }
-    const isContextDocWorkspace = isContextDocAiProviderId(
-      workspace.aiProviderId
-    );
-    const canStoreMainTabUrl = isContextDocWorkspace
-      ? isGoogleDocsUrl(mainTabUrl)
-      : isSupportedAiUrl(mainTabUrl);
-    if (!isRestoringChat && !canStoreMainTabUrl) {
-      throw new Error(
-        isContextDocWorkspace
-          ? "The main tab is not the context Google Doc, so there is no URL to store."
-          : "The main tab is not a supported AI provider page, so there is no chat URL to store."
-      );
-    }
-
-    await chrome.tabs.update(workspace.chatGptTabId, {
-      url: nextMainTabUrl,
-      active: true
-    });
-
-    workspace.storedExchangeUrl = isRestoringChat ? "" : mainTabUrl;
-    if (!isRestoringChat) {
-      workspace.chatGptUrl = mainTabUrl;
-    }
-    if (currentSaveWorkspace === workspace) {
-      updateSaveWorkspaceActions();
-    }
-
-    showStatusForTab(ownerTabId, "success", nextMainTabUrl, "Main tab:");
-    addLogForTab(
-      ownerTabId,
-      "success",
-      isRestoringChat
-        ? "Stored chat URL restored in the main tab."
-        : "Chat URL stored for the next Exchange; the job URL is now in the main tab."
-    );
-  } catch (error) {
-    console.error(error);
-    showStatusForTab(
-      ownerTabId,
-      "error",
-      error.message || "Could not exchange the URLs."
-    );
-    addLogForTab(
-      ownerTabId,
-      "error",
-      error.message || "Could not exchange the URLs."
-    );
-  } finally {
-    finishSaveWorkspaceAction(workspace);
-  }
-}
 
 function rememberPickupWindowForOwnerTab(ownerTabId, windowId) {
   if (!Number.isInteger(ownerTabId) || !Number.isInteger(windowId)) {
@@ -6579,11 +6439,6 @@ function clearEmptyApplicationWorkspaceJobUrl() {
   if (hasActiveSaveWorkspaceForCurrentTab()) {
     const workspace = currentSaveWorkspace;
     const displayedKey = getWorkspaceUrlComparisonKey(displayedUrl);
-    if (
-      getWorkspaceUrlComparisonKey(workspace.storedExchangeUrl) === displayedKey
-    ) {
-      workspace.storedExchangeUrl = "";
-    }
     if (getWorkspaceUrlComparisonKey(workspace.jobUrl) === displayedKey) {
       workspace.jobUrl = "";
     }
@@ -6674,18 +6529,12 @@ function tearDownDeletedSaveWorkspace(workspace) {
   const ownerTabId = workspace.chatGptTabId;
   if (Number.isInteger(ownerTabId)) {
     saveWorkspacesByTabId.delete(ownerTabId);
-    const tabState = tabStateById.get(ownerTabId);
-    if (tabState) {
-      tabState.saveWorkspaceSidePanelView = "home";
-    }
   }
 
   if (currentSaveWorkspace === workspace) {
     currentSaveWorkspace = null;
   }
 
-  currentSaveWorkspaceSidePanelView = "workspace";
-  currentDefaultSidePanelView = "home";
   setBuildResumeContextModalOpen(false, { returnFocus: false });
   schedulePersistTabSession();
   renderSaveWorkspaceSidePanelView({ focus: true });
@@ -6811,29 +6660,13 @@ function hasActiveSaveWorkspaceForCurrentTab() {
 }
 
 function getCurrentSidePanelView() {
-  return hasActiveSaveWorkspaceForCurrentTab()
-    ? currentSaveWorkspaceSidePanelView
-    : currentDefaultSidePanelView;
+  return hasActiveSaveWorkspaceForCurrentTab() ? "workspace" : "home";
 }
 
 function renderSaveWorkspaceSidePanelView({ focus = false } = {}) {
-  const currentView = getCurrentSidePanelView();
-  const showWorkspace = currentView === "workspace";
-  const showHomeSwitcher = currentView === "home";
-
+  const showWorkspace = hasActiveSaveWorkspaceForCurrentTab();
   splitWindowsModal?.classList.add("is-workspace-page");
   appRoot?.classList.toggle("is-workspace-hidden", showWorkspace);
-  homeWorkspaceSwitcher?.classList.toggle("is-hidden", !showHomeSwitcher);
-  homeWorkspaceSwitcher?.setAttribute(
-    "aria-hidden",
-    String(!showHomeSwitcher)
-  );
-
-  if (splitWindowsModalCloseButton) {
-    const label = "Exchange with main Home view";
-    splitWindowsModalCloseButton.setAttribute("aria-label", label);
-    splitWindowsModalCloseButton.title = label;
-  }
   renderSavePostProcessControls();
 
   splitWindowsModal?.setAttribute("role", "region");
@@ -6842,55 +6675,19 @@ function renderSaveWorkspaceSidePanelView({ focus = false } = {}) {
   splitWindowsModal?.setAttribute("aria-hidden", String(!showWorkspace));
 
   if (showWorkspace) {
-    const activeWorkspaceTab = hasActiveSaveWorkspaceForCurrentTab()
-      ? currentSaveWorkspace.activeTab
-      : currentEmptyWorkspaceTab;
-    setSaveWorkspaceTab(activeWorkspaceTab);
+    setSaveWorkspaceTab(currentSaveWorkspace.activeTab);
   }
 
-  const shouldShowBuildModal =
-    showWorkspace &&
-    hasActiveSaveWorkspaceForCurrentTab() &&
-    isBuildResumeContextModalOpen;
-  buildResumeContextModal?.classList.toggle(
-    "is-hidden",
-    !shouldShowBuildModal
-  );
-  buildResumeContextModal?.setAttribute(
-    "aria-hidden",
-    String(!shouldShowBuildModal)
-  );
+  const shouldShowBuildModal = showWorkspace && isBuildResumeContextModalOpen;
+  buildResumeContextModal?.classList.toggle("is-hidden", !shouldShowBuildModal);
+  buildResumeContextModal?.setAttribute("aria-hidden", String(!shouldShowBuildModal));
 
   if (focus) {
-    if (showWorkspace) {
-      splitWindowsModalCloseButton?.focus();
-    } else if (showHomeSwitcher) {
-      homeWorkspaceExchangeButton?.focus();
-    }
+    (showWorkspace ? applicationWorkspaceUrlInput : saveButton)?.focus();
   }
-
-  updateWorkspacePromptInfoButtons();
 }
 
-function setSaveWorkspaceSidePanelView(view, { focus = true } = {}) {
-  const nextView = view === "workspace" ? "workspace" : "home";
-  if (hasActiveSaveWorkspaceForCurrentTab()) {
-    currentSaveWorkspaceSidePanelView = nextView;
-  } else {
-    currentDefaultSidePanelView = nextView;
-  }
-  renderSaveWorkspaceSidePanelView({ focus });
-  return true;
-}
 
-function exchangeSaveWorkspaceSidePanelView() {
-  const currentView = getCurrentSidePanelView();
-  const nextView =
-    currentView === "workspace"
-      ? "home"
-      : "workspace";
-  return setSaveWorkspaceSidePanelView(nextView);
-}
 
 // Clears only the active tab's workspace; other tabs keep theirs.
 function normalizeJobrightOpenCount() {
@@ -7629,54 +7426,9 @@ function isGoogleDocsUrl(url = "") {
 }
 
 function getApplicationWorkspaceGptUrl(workspace) {
-  if (!workspace) {
-    return "";
-  }
-
-  const storedChatUrl = String(workspace.storedExchangeUrl || "").trim();
-  const chatGptUrl = String(workspace.chatGptUrl || "").trim();
-
-  // After Exchange, the GPT URL can be parked while another page is in the
-  // main tab. Never fall back to the job URL; it has its own panel.
-  return storedChatUrl || chatGptUrl;
+  return String(workspace?.chatGptUrl || "").trim();
 }
 
-async function resolveApplicationWorkspaceGptUrl(workspace) {
-  const fallbackUrl = getApplicationWorkspaceGptUrl(workspace);
-  if (!workspace || !Number.isInteger(workspace.chatGptTabId)) {
-    return fallbackUrl;
-  }
-
-  try {
-    const mainTab = await chrome.tabs.get(workspace.chatGptTabId);
-    const mainUrlKey = getWorkspaceUrlComparisonKey(mainTab?.url);
-    const seenUrls = new Set();
-    const remainingUrl = [
-      workspace.storedExchangeUrl,
-      workspace.chatGptUrl
-    ]
-      .map((value) => String(value || "").trim())
-      .find((candidate) => {
-        if (!candidate) {
-          return false;
-        }
-        const candidateKey = getWorkspaceUrlComparisonKey(candidate);
-        if (!candidateKey || seenUrls.has(candidateKey)) {
-          return false;
-        }
-        seenUrls.add(candidateKey);
-        return candidateKey !== mainUrlKey;
-      });
-
-    if (remainingUrl) {
-      return remainingUrl;
-    }
-  } catch (_error) {
-    // Fall back to workspace-stored URLs when the tab is unavailable.
-  }
-
-  return fallbackUrl;
-}
 
 async function updateApplicationWorkspaceJobGptUrl() {
   if (!applicationWorkspaceJobGptLocation || !applicationWorkspaceJobGptUrl) {
@@ -7702,9 +7454,7 @@ async function updateApplicationWorkspaceJobGptUrl() {
     }
   }
 
-  const url = workspace
-    ? await resolveApplicationWorkspaceGptUrl(workspace)
-    : "";
+  const url = getApplicationWorkspaceGptUrl(workspace);
   const actionsDisabled =
     Boolean(workspace?.isBusy) || areActionButtonsDisabled;
   const mainTabId = Number.isInteger(workspace?.chatGptTabId)
@@ -7911,10 +7661,6 @@ function updateApplicationWorkspaceUrlControls() {
     applicationWorkspaceNotesButton.disabled =
       !hasActiveWorkspace || areActionButtonsDisabled;
   }
-  if (applicationWorkspaceExportButton) {
-    applicationWorkspaceExportButton.classList.remove("is-hidden");
-    applicationWorkspaceExportButton.disabled = areActionButtonsDisabled;
-  }
   if (applicationWorkspaceCopyUrlButton) {
     applicationWorkspaceCopyUrlButton.disabled = !hasUrl;
   }
@@ -7945,11 +7691,6 @@ function setSplitWindowsPreview(rightUrl, options = {}) {
       options.helpText ||
         "Preview content is embedded in the side panel. Some sites may block embedded previews."
     );
-  }
-  if (splitWindowsModalTitle) {
-    splitWindowsModalTitle.textContent = isPreviewing
-      ? String(options.title || "Right URL")
-      : "Application workspace";
   }
 
   if (splitWindowsPreviewUrl) {
@@ -8000,9 +7741,6 @@ function setEmptyApplicationWorkspacePreview(activeTab) {
   splitWindowsPreviewView?.classList.remove("is-hidden");
   splitWindowsPreviewHelp?.classList.add("is-hidden");
 
-  if (splitWindowsModalTitle) {
-    splitWindowsModalTitle.textContent = "Application workspace";
-  }
   if (splitWindowsPreviewUrl) {
     splitWindowsPreviewUrl.textContent = emptyTitle;
     splitWindowsPreviewUrl.title = "";
@@ -8056,11 +7794,11 @@ function setSaveWorkspaceTab(activeTab, { forceReload = false } = {}) {
         ? "Conversation preview unavailable"
         : "",
       unavailableHelp: isConversationPreview
-        ? "AI conversations cannot be displayed inside the extension. Use Exchange to open this conversation in the main tab."
+        ? "AI conversations cannot be displayed inside the extension. Use the AI URL pickup button to open this conversation in a browser window."
         : "",
       helpText: isResume
         ? "The profile resume is embedded in the side panel."
-        : "If this page is blank, the website blocks embedded viewing. Use Exchange to open it in the main tab."
+        : "If this page is blank, the website blocks embedded viewing. Use the Job URL pickup button to open it in a browser window."
     });
   } else {
     const emptyWorkspaceUrl = currentEmptyWorkspaceUrls[normalizedTab];
@@ -8098,9 +7836,9 @@ function showBlockedInformationPagePreview() {
     frameTitle: currentSaveWorkspace.jobTitle,
     unavailableTitle: "Information page preview unavailable",
     unavailableHelp:
-      "This website did not allow its page to load inside the extension. Use Exchange to open it in the main tab.",
+      "This website did not allow its page to load inside the extension. Use the Job URL pickup button to open it in a browser window.",
     helpText:
-      "The website blocked embedded viewing. Use Exchange to open it in the main tab."
+      "The website blocked embedded viewing. Use the Job URL pickup button to open it in a browser window."
   });
 }
 function getActiveApplicationWorkspaceTab() {
@@ -8199,7 +7937,6 @@ function updateSaveWorkspaceActions() {
     saveWorkspaceDownloadButton.disabled = actionsDisabled;
   }
   updateApplicationWorkspaceUrlControls();
-  updateWorkspacePromptInfoButtons();
 }
 
 function showSaveWorkspacePreview({
@@ -8250,7 +7987,6 @@ function showSaveWorkspacePreview({
     hasExactAiUrl: exactAiUrlAvailable,
     chatGptTabId,
     chatGptUrl: normalizedChatGptUrl,
-    storedExchangeUrl: "",
     activeTab: "resume",
     isReady: Boolean(isReady),
     isBusy: false,
@@ -8263,18 +7999,12 @@ function showSaveWorkspacePreview({
 
   // The workspace belongs to its own tab; only take over the panel when the
   // user is actually looking at that tab.
-  const workspaceTabState = getTabState(chatGptTabId);
-  if (workspaceTabState) {
-    workspaceTabState.saveWorkspaceSidePanelView = "workspace";
-  }
-
   schedulePersistTabSession();
 
   if (chatGptTabId !== activeTabId) {
     return;
   }
 
-  currentSaveWorkspaceSidePanelView = "workspace";
   syncCurrentSaveWorkspace();
 
   setSaveWorkspaceTab("resume");
@@ -8372,13 +8102,6 @@ saveAssignHotkeyButton?.addEventListener("click", openChromeShortcutSettings);
 window.addEventListener("focus", refreshActionHotkeys);
 jobrightOpenCountInput?.addEventListener("change", normalizeJobrightOpenCount);
 
-splitWindowsModalCloseButton?.addEventListener(
-  "click",
-  exchangeSaveWorkspaceSidePanelView
-);
-homeWorkspaceExchangeButton?.addEventListener("click", () =>
-  exchangeSaveWorkspaceSidePanelView()
-);
 homeCancelProcessButton?.addEventListener("click", cancelSavePostProcess);
 applicationCancelProcessButton?.addEventListener(
   "click",
@@ -8403,14 +8126,6 @@ applicationWorkspaceClosePickupButton?.addEventListener(
 applicationWorkspaceNotesButton?.addEventListener(
   "click",
   openApplicationWorkspaceNotesModal
-);
-applicationWorkspacePromptInfoButton?.addEventListener(
-  "click",
-  openWorkspacePromptInfoModal
-);
-homeWorkspacePromptInfoButton?.addEventListener(
-  "click",
-  openWorkspacePromptInfoModal
 );
 applicationWorkspaceCopyUrlButton?.addEventListener(
   "click",
@@ -8527,13 +8242,10 @@ profileResumeSettingsDoneButton?.addEventListener("click", () =>
   setProfileResumeSettingsModalOpen(false)
 );
 profileResumeSettingsAddButton?.addEventListener("click", openAddPromptResumeModal);
+profileSettingsSaveButton?.addEventListener("click", submitProfileSettingsForm);
 
 
 exportAppDataIconButton?.addEventListener("click", openExportAppDataModal);
-applicationWorkspaceExportButton?.addEventListener(
-  "click",
-  openExportAppDataModal
-);
 exportAppDataModalBackdrop?.addEventListener("click", () =>
   setExportAppDataModalOpen(false)
 );
@@ -8545,11 +8257,7 @@ exportAppDataModalCancelButton?.addEventListener("click", () =>
 );
 exportAppDataModalConfirmButton?.addEventListener("click", exportAppData);
 
-homeWorkspaceImportButton?.addEventListener("click", openImportAppDataModal);
-applicationWorkspaceImportButton?.addEventListener(
-  "click",
-  openImportAppDataModal
-);
+importAppDataIconButton?.addEventListener("click", openImportAppDataModal);
 importAppDataModalBackdrop?.addEventListener("click", () =>
   setImportAppDataModalOpen(false)
 );
@@ -8683,11 +8391,6 @@ document.addEventListener("keydown", (event) => {
     !buildResumeContextModal.classList.contains("is-hidden")
   ) {
     setBuildResumeContextModalOpen(false);
-    return;
-  }
-
-  if (splitWindowsModal && !splitWindowsModal.classList.contains("is-hidden")) {
-    setSaveWorkspaceSidePanelView("home");
     return;
   }
 
