@@ -210,7 +210,9 @@ columns C-F shift to D-G.
   necessary, the group moves to the selected AI chat's window.
 - **Open Jobright** in the Home workspace has a labeled main button, a joined
   settings icon, and a round Play button. Both the main button and Play open the
-  configured number of recommendations. Settings offers counts 1–5, 10, 25, 50, 100, and 150 on
+  configured number of recommendations. During a run, Play becomes Stop. Clicking
+  Stop cancels pending waits and further automated page actions, keeps application
+  tabs already opened, and restores Play when the run ends. Settings offers counts 1–5, 10, 25, 50, 100, and 150 on
   Jobright's `/jobs/recommend` page. For each eligible recommendation it opens the
   employer's application page in a background tab, removes the app's standard
   tracking parameters from its URL, converts Lever `/apply` links to the base job

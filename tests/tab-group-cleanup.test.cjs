@@ -201,7 +201,7 @@ function panelFixture(sendMessage = async () => ({ ok: true })) {
   const context = vm.createContext({
     console: { error() {} }, activeTabId: 8,
     areActionButtonsDisabled: false, isSaveActionRunning: false, isCheckPostingRunning: false,
-    isMakeOrOpenAiTabRunning: false, isJobrightOpening: false, isTabGroupCleanupRunning: false,
+    isMakeOrOpenAiTabRunning: false, isJobrightOpening: false, jobrightOpenRun: null, isTabGroupCleanupRunning: false,
     playPostingBatchState: null, isCurrentTabGoogleSheet: false, isCurrentTabJobright: true,
     isCurrentTabPlayAiChat: false,
     saveButton: button(), checkPostingButton: button(), playButton: button(),

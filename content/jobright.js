@@ -23,7 +23,27 @@
     openArmedUntil: 0
   };
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let activeOpenRun = null;
+  const stoppedOpenRunIds = new Set();
+  const getOpenRunSignal = (runId) => {
+    if (!runId || activeOpenRun?.id !== runId) {
+      throw new Error("Open Jobright stopped.");
+    }
+    activeOpenRun.controller.signal.throwIfAborted();
+    return activeOpenRun.controller.signal;
+  };
+  const sleep = (ms, signal) => {
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const finish = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => { finish(); reject(new Error("Open Jobright stopped.")); };
+      const timer = setTimeout(() => { finish(); resolve(); }, ms);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  };
   const normalizeText = (value) =>
     String(value || "")
       .replace(/\s+/g, " ")
@@ -357,7 +377,8 @@
     return card?.classList.contains("job-card-flag-classname") ? card : null;
   };
 
-  const claimNext = async (processedJobIds = []) => {
+  const claimNext = async (processedJobIds = [], runId) => {
+    const signal = getOpenRunSignal(runId);
     const processed = new Set(
       (Array.isArray(processedJobIds) ? processedJobIds : []).map((value) =>
         String(value || "")
@@ -388,7 +409,7 @@
         window.scrollBy(0, step);
       }
 
-      await sleep(700);
+      await sleep(700, signal);
       card = findPending();
 
       if (!card && getCards().length === mountedBefore && !container) {
@@ -416,7 +437,8 @@
     };
   };
 
-  const clickApply = async (jobId) => {
+  const clickApply = async (jobId, runId) => {
+    const signal = getOpenRunSignal(runId);
     const card = getCardById(jobId);
     if (!card) {
       return { ok: false, error: "The recommendation card is no longer available." };
@@ -432,7 +454,8 @@
     store.openArmedUntil = Date.now() + 20000;
 
     applyButton.scrollIntoView({ block: "center", inline: "nearest" });
-    await sleep(100);
+    await sleep(100, signal);
+    signal.throwIfAborted();
     applyButton.dispatchEvent(
       new MouseEvent("click", {
         view: window,
@@ -445,13 +468,14 @@
 
     const deadline = Date.now() + 2500;
     while (store.capturedOpenUrls.length === 0 && Date.now() < deadline) {
-      await sleep(100);
+      await sleep(100, signal);
     }
 
     return { ok: true, applyUrl: store.capturedOpenUrls.shift() || "" };
   };
 
-  const markAlreadyApplied = async (jobId) => {
+  const markAlreadyApplied = async (jobId, runId) => {
+    const signal = getOpenRunSignal(runId);
     const card = getCardById(jobId);
     if (!card) {
       return { ok: false, error: "The recommendation card is no longer available." };
@@ -466,7 +490,7 @@
     }
 
     dislikeButton.scrollIntoView({ block: "center", inline: "nearest" });
-    await sleep(100);
+    await sleep(100, signal);
 
     const overlaySelector =
       '.ant-dropdown, .ant-dropdown-menu, .ant-popover, [role="menu"]';
@@ -510,7 +534,7 @@
             bubbles: true
           })
         );
-        await sleep(300);
+        await sleep(300, signal);
       }
 
       dislikeButton.dispatchEvent(
@@ -522,7 +546,7 @@
       while (!action && Date.now() < menuDeadline) {
         action = findAlreadyAppliedAction();
         if (!action) {
-          await sleep(100);
+          await sleep(100, signal);
         }
       }
     }
@@ -531,6 +555,7 @@
       return { ok: false, error: "The Already Applied menu item did not appear." };
     }
 
+    signal.throwIfAborted();
     action.click();
 
     // Jobright removes the card once the status is recorded.
@@ -543,7 +568,7 @@
         return { ok: true, removed: false };
       }
 
-      await sleep(100);
+      await sleep(100, signal);
     }
 
     return {
@@ -561,6 +586,30 @@
   const disarmOpenCapture = () => {
     store.openArmedUntil = 0;
     store.capturedOpenUrls.length = 0;
+    return { ok: true };
+  };
+
+  const startOpenRun = (runId) => {
+    if (!runId || stoppedOpenRunIds.has(runId)) {
+      return { ok: false, cancelled: true, error: "Open Jobright stopped." };
+    }
+    if (activeOpenRun?.id === runId) return { ok: true };
+    // A reopened side panel can start a fresh run after its old document was
+    // closed. Retire the old run so its delayed page actions cannot resume.
+    if (activeOpenRun) stopOpenRun(activeOpenRun.id);
+    activeOpenRun = { id: runId, controller: new AbortController() };
+    return { ok: true };
+  };
+
+  const stopOpenRun = (runId) => {
+    // Remember stopped runs so a delayed injection cannot restart one, or
+    // interfere with a newer run on this page.
+    stoppedOpenRunIds.add(runId);
+    if (activeOpenRun?.id === runId) {
+      activeOpenRun.controller.abort();
+      activeOpenRun = null;
+      disarmOpenCapture();
+    }
     return { ok: true };
   };
 
@@ -582,6 +631,8 @@
   store.markAlreadyApplied = markAlreadyApplied;
   store.drainCapturedOpenUrls = drainCapturedOpenUrls;
   store.disarmOpenCapture = disarmOpenCapture;
+  store.startOpenRun = startOpenRun;
+  store.stopOpenRun = stopOpenRun;
   store.describe = describe;
 
   window[STORE_KEY] = store;

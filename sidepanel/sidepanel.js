@@ -345,6 +345,7 @@ let isCurrentTabJobright = false;
 let isCurrentTabPlayAiChat = false;
 let currentTabAvailabilityRequestId = 0;
 let isJobrightOpening = false;
+let jobrightOpenRun = null;
 let isCheckPostingRunning = false;
 let isMakeOrOpenAiTabRunning = false;
 let isTabGroupCleanupRunning = false;
@@ -2351,9 +2352,17 @@ function updateJobrightOpenControlsDisabledState() {
     ? "Open Jobright applications"
     : "Open is available only on Jobright Recommendations.";
   if (jobrightPlayButton) {
-    jobrightPlayButton.disabled = isDisabled;
-    jobrightPlayButton.setAttribute("aria-disabled", String(isDisabled));
-    jobrightPlayButton.title = isDisabled
+    const isStopping = jobrightOpenRun?.controller.signal.aborted === true;
+    const isPlayDisabled = isJobrightOpening ? isStopping : isDisabled;
+    jobrightPlayButton.disabled = isPlayDisabled;
+    jobrightPlayButton.setAttribute("aria-disabled", String(isPlayDisabled));
+    jobrightPlayButton.setAttribute("aria-label", isJobrightOpening ? "Stop Jobright" : "Play Jobright");
+    jobrightPlayButton.querySelector("path")?.setAttribute(
+      "d", isJobrightOpening ? "M7 7h10v10H7z" : "m8 5 11 7-11 7z"
+    );
+    jobrightPlayButton.title = isJobrightOpening
+      ? isStopping ? "Stopping Open Jobright..." : "Stop opening Jobright applications"
+      : isDisabled
       ? openJobrightJobsButton.title
       : "Open the selected number of Jobright applications";
   }
@@ -6706,7 +6715,18 @@ function normalizeJobrightOpenCount() {
 // Every Jobright page interaction lives in content/jobright.js, which runs in
 // the page's own realm at document_start so it can read the job data the app
 // loads. The functions below are the thin bodies injected to reach it.
-function claimNextJobrightApplication(processedJobIds = []) {
+function startJobrightOpenRun(runId) {
+  return window.__applicationHelperJobright?.startOpenRun?.(runId) || {
+    ok: false,
+    error: "The Jobright helper needs to be reloaded. Reload the Jobright tab and click Open again."
+  };
+}
+
+function stopJobrightOpenRun(runId) {
+  return window.__applicationHelperJobright?.stopOpenRun?.(runId) || { ok: false };
+}
+
+function claimNextJobrightApplication(processedJobIds = [], runId) {
   const store = window.__applicationHelperJobright;
   if (!store) {
     return {
@@ -6716,20 +6736,23 @@ function claimNextJobrightApplication(processedJobIds = []) {
     };
   }
 
-  return store.claimNext(processedJobIds);
+  const started = store.startOpenRun?.(runId);
+  if (!started?.ok) return { found: false, cancelled: started?.cancelled === true,
+    error: started?.error || "Reload the Jobright tab and click Open again." };
+  return store.claimNext(processedJobIds, runId);
 }
 
-function clickJobrightApplyButton(jobId) {
+function clickJobrightApplyButton(jobId, runId) {
   const store = window.__applicationHelperJobright;
   return store
-    ? store.clickApply(jobId)
+    ? store.clickApply(jobId, runId)
     : { ok: false, error: "The Jobright helper did not load on this tab." };
 }
 
-function markJobrightApplicationAlreadyApplied(jobId) {
+function markJobrightApplicationAlreadyApplied(jobId, runId) {
   const store = window.__applicationHelperJobright;
   return store
-    ? store.markAlreadyApplied(jobId)
+    ? store.markAlreadyApplied(jobId, runId)
     : { ok: false, error: "The Jobright helper did not load on this tab." };
 }
 
@@ -6751,12 +6774,73 @@ function describeJobrightHarvest() {
   );
 }
 
+function throwIfJobrightOpenStopped(signal) {
+  if (signal?.aborted) {
+    const error = new Error("Open Jobright stopped.");
+    error.cancelled = true;
+    throw error;
+  }
+}
+
+async function waitForJobrightOpenOperation(operation, signal) {
+  throwIfJobrightOpenStopped(signal);
+  try {
+    const result = await operation();
+    throwIfJobrightOpenStopped(signal);
+    return result;
+  } catch (error) {
+    throwIfJobrightOpenStopped(signal);
+    throw error;
+  }
+}
+
+function waitForJobrightOpenDelay(delayMs, signal) {
+  throwIfJobrightOpenStopped(signal);
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      finish();
+      const error = new Error("Open Jobright stopped.");
+      error.cancelled = true;
+      reject(error);
+    };
+    const timer = setTimeout(() => { finish(); resolve(); }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function stopJobrightJobs() {
+  const run = jobrightOpenRun;
+  if (!run || run.controller.signal.aborted) return;
+  run.controller.abort();
+  updateJobrightOpenControlsDisabledState();
+  addLogForTab(run.ownerTabId, "info", "Stop requested. Ending Open Jobright...");
+  if (Number.isInteger(run.ownerTabId)) {
+    run.stopPromise = Promise.resolve().then(() => chrome.scripting.executeScript({
+      target: { tabId: run.ownerTabId }, world: "MAIN",
+      func: stopJobrightOpenRun, args: [run.id]
+    })).catch(() => {});
+    await run.stopPromise;
+  }
+}
+
+async function toggleJobrightJobs() {
+  if (jobrightPlayButton?.disabled) return;
+  if (isJobrightOpening) await stopJobrightJobs();
+  else await openJobrightJobs();
+}
+
 async function waitForJobrightApplicationTab(
   sourceTabId,
   sourceWindowId,
   knownTabIds,
-  timeoutMs = 12000
+  timeoutMs = 12000,
+  signal
 ) {
+  const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
   const knownIds = new Set(
     Array.isArray(knownTabIds)
       ? knownTabIds.filter((value) => Number.isInteger(value))
@@ -6767,7 +6851,7 @@ async function waitForJobrightApplicationTab(
   while (Date.now() < deadline) {
     // Query every window: window.open() with features lands in a separate popup
     // window, which a window-scoped query would never see.
-    const tabs = await chrome.tabs.query({});
+    const tabs = await waitForOperation(() => chrome.tabs.query({}));
     const newTabs = tabs.filter(
       (tab) =>
         Number.isInteger(tab.id) &&
@@ -6782,25 +6866,26 @@ async function waitForJobrightApplicationTab(
     if (applicationTab) {
       if (applicationTab.windowId !== sourceWindowId) {
         try {
-          const moved = await chrome.tabs.move(applicationTab.id, {
+          const moved = await waitForOperation(() => chrome.tabs.move(applicationTab.id, {
             windowId: sourceWindowId,
             index: -1
-          });
+          }));
           const movedTab = Array.isArray(moved) ? moved[0] : moved;
           if (movedTab) {
-            await chrome.tabs.update(sourceTabId, { active: true });
+            await waitForOperation(() => chrome.tabs.update(sourceTabId, { active: true }));
             return movedTab;
           }
         } catch (_error) {
+          throwIfJobrightOpenStopped(signal);
           // Leave the tab where the page put it.
         }
       }
 
-      await chrome.tabs.update(sourceTabId, { active: true });
+      await waitForOperation(() => chrome.tabs.update(sourceTabId, { active: true }));
       return applicationTab;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForJobrightOpenDelay(100, signal);
   }
 
   return null;
@@ -6809,13 +6894,15 @@ async function waitForJobrightApplicationTab(
 async function filterJobrightApplicationTabUrl(
   applicationTabId,
   sourceTabId,
-  timeoutMs = 2000
+  timeoutMs = 2000,
+  signal
 ) {
+  const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
   const deadline = Date.now() + timeoutMs;
   let applicationUrl = "";
 
   while (Date.now() < deadline) {
-    const applicationTab = await chrome.tabs.get(applicationTabId);
+    const applicationTab = await waitForOperation(() => chrome.tabs.get(applicationTabId));
     const candidateUrl = String(
       applicationTab.pendingUrl || applicationTab.url || ""
     ).trim();
@@ -6825,25 +6912,25 @@ async function filterJobrightApplicationTabUrl(
       break;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForJobrightOpenDelay(100, signal);
   }
 
   if (!applicationUrl) {
     return { url: "", filtered: false };
   }
 
-  const response = await chrome.runtime.sendMessage({
+  const response = await waitForOperation(() => chrome.runtime.sendMessage({
     type: "NORMALIZE_URL",
     url: applicationUrl
-  });
+  }));
   if (!response?.ok) {
     throw new Error(response?.error || "Could not filter the application URL.");
   }
 
   const filteredUrl = String(response.url || applicationUrl);
   if (filteredUrl !== applicationUrl) {
-    await chrome.tabs.update(applicationTabId, { url: filteredUrl });
-    await chrome.tabs.update(sourceTabId, { active: true });
+    await waitForOperation(() => chrome.tabs.update(applicationTabId, { url: filteredUrl }));
+    await waitForOperation(() => chrome.tabs.update(sourceTabId, { active: true }));
   }
 
   return {
@@ -6852,19 +6939,21 @@ async function filterJobrightApplicationTabUrl(
   };
 }
 
-async function openCapturedApplicationTab(sourceTab) {
+async function openCapturedApplicationTab(sourceTab, signal) {
+  const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await waitForOperation(() => chrome.scripting.executeScript({
       target: { tabId: sourceTab.id },
       world: "MAIN",
       func: collectJobrightCapturedOpenUrls
-    });
+    }));
     const urls = results?.[0]?.result?.urls || [];
     const url = urls[urls.length - 1] || "";
     if (!url) {
       return null;
     }
 
+    throwIfJobrightOpenStopped(signal);
     return await chrome.tabs.create({
       url,
       windowId: sourceTab.windowId,
@@ -6872,12 +6961,14 @@ async function openCapturedApplicationTab(sourceTab) {
       openerTabId: sourceTab.id
     });
   } catch (_error) {
+    throwIfJobrightOpenStopped(signal);
     return null;
   }
 }
 
-async function ensureJobrightRecommendationsTab(tabId) {
-  const current = await chrome.tabs.get(tabId);
+async function ensureJobrightRecommendationsTab(tabId, signal) {
+  const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
+  const current = await waitForOperation(() => chrome.tabs.get(tabId));
   if (isJobrightRecommendationsUrl(current.url || "")) {
     return true;
   }
@@ -6889,15 +6980,16 @@ async function ensureJobrightRecommendationsTab(tabId) {
   );
 
   try {
-    await chrome.tabs.goBack(tabId);
+    await waitForOperation(() => chrome.tabs.goBack(tabId));
   } catch (_error) {
+    throwIfJobrightOpenStopped(signal);
     return false;
   }
 
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const check = await chrome.tabs.get(tabId);
+    await waitForJobrightOpenDelay(300, signal);
+    const check = await waitForOperation(() => chrome.tabs.get(tabId));
     if (
       isJobrightRecommendationsUrl(check.url || "") &&
       check.status === "complete"
@@ -6910,7 +7002,7 @@ async function ensureJobrightRecommendationsTab(tabId) {
 }
 
 async function openJobrightJobs() {
-  if (openJobrightJobsButton?.disabled) {
+  if (isJobrightOpening || openJobrightJobsButton?.disabled) {
     return;
   }
 
@@ -6920,6 +7012,10 @@ async function openJobrightJobs() {
   const openedJobs = [];
   const failures = [];
   let captureArmedTabId = null;
+  const run = { id: createRunId(), ownerTabId, controller: new AbortController(), stopPromise: null };
+  const signal = run.controller.signal;
+  const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
+  jobrightOpenRun = run;
   isJobrightOpening = true;
   updateJobrightOpenControlsDisabledState();
   clearStatus();
@@ -6931,12 +7027,12 @@ async function openJobrightJobs() {
 
   try {
     const tab = Number.isInteger(ownerTabId)
-      ? await chrome.tabs.get(ownerTabId)
+      ? await waitForOperation(() => chrome.tabs.get(ownerTabId))
       : (
-          await chrome.tabs.query({
+          await waitForOperation(() => chrome.tabs.query({
             active: true,
             lastFocusedWindow: true
-          })
+          }))
         )[0];
 
     if (
@@ -6947,13 +7043,21 @@ async function openJobrightJobs() {
     }
 
     captureArmedTabId = tab.id;
+    run.ownerTabId = tab.id;
+    const startResults = await waitForOperation(() => chrome.scripting.executeScript({
+      target: { tabId: tab.id }, world: "MAIN",
+      func: startJobrightOpenRun, args: [run.id]
+    }));
+    if (!startResults?.[0]?.result?.ok) {
+      throw new Error(startResults?.[0]?.result?.error || "Could not start the Jobright helper. Reload the Jobright tab and try again.");
+    }
 
     try {
-      const harvestResults = await chrome.scripting.executeScript({
+      const harvestResults = await waitForOperation(() => chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: "MAIN",
         func: describeJobrightHarvest
-      });
+      }));
       const harvest = harvestResults?.[0]?.result;
       if (!harvest?.ok) {
         addLogForTab(
@@ -6969,6 +7073,7 @@ async function openJobrightJobs() {
         );
       }
     } catch (_error) {
+      throwIfJobrightOpenStopped(signal);
       // Diagnostics only; the run continues either way.
     }
 
@@ -7005,21 +7110,22 @@ async function openJobrightJobs() {
       openedJobs.length < count &&
       processedJobIds.length < maximumCandidates
     ) {
-      const existingTabs = await chrome.tabs.query({});
+      const existingTabs = await waitForOperation(() => chrome.tabs.query({}));
       const knownTabIds = existingTabs
         .map((existingTab) => existingTab.id)
         .filter((tabId) => Number.isInteger(tabId));
 
       let claimed = null;
       try {
-        const claimResults = await chrome.scripting.executeScript({
+        const claimResults = await waitForOperation(() => chrome.scripting.executeScript({
           target: { tabId: tab.id },
           world: "MAIN",
           func: claimNextJobrightApplication,
-          args: [processedJobIds]
-        });
+          args: [processedJobIds, run.id]
+        }));
         claimed = claimResults?.[0]?.result || null;
       } catch (error) {
+        throwIfJobrightOpenStopped(signal);
         // The Jobright tab was busy or navigating; retry rather than abort.
         addLogForTab(
           tab.id,
@@ -7030,6 +7136,10 @@ async function openJobrightJobs() {
         );
       }
 
+      if (claimed?.cancelled) {
+        run.controller.abort();
+        throwIfJobrightOpenStopped(signal);
+      }
       if (!claimed?.found) {
         consecutiveEmptyScans += 1;
         const scanDetail = claimed
@@ -7053,9 +7163,7 @@ async function openJobrightJobs() {
           "info",
           `No new recommendation was ready${scanDetail}. Retrying (${consecutiveEmptyScans} of ${maximumConsecutiveEmptyScans})...`
         );
-        await new Promise((resolve) =>
-          setTimeout(resolve, emptyScanRetryDelayMs)
-        );
+        await waitForJobrightOpenDelay(emptyScanRetryDelayMs, signal);
         continue;
       }
 
@@ -7078,14 +7186,15 @@ async function openJobrightJobs() {
       if (!applyUrl) {
         let click = null;
         try {
-          const clickResults = await chrome.scripting.executeScript({
+          const clickResults = await waitForOperation(() => chrome.scripting.executeScript({
             target: { tabId: tab.id },
             world: "MAIN",
             func: clickJobrightApplyButton,
-            args: [jobId]
-          });
+            args: [jobId, run.id]
+          }));
           click = clickResults?.[0]?.result || null;
         } catch (error) {
+          throwIfJobrightOpenStopped(signal);
           click = { ok: false, error: error.message };
         }
 
@@ -7109,6 +7218,9 @@ async function openJobrightJobs() {
       let applicationTab = null;
       if (applyUrl) {
         try {
+          // A tab creation already sent to Chrome may finish after Stop. Keep
+          // that tab and count it, then stop before performing another step.
+          throwIfJobrightOpenStopped(signal);
           applicationTab = await chrome.tabs.create({
             url: applyUrl,
             windowId: tab.windowId,
@@ -7116,6 +7228,7 @@ async function openJobrightJobs() {
             openerTabId: tab.id
           });
         } catch (error) {
+          throwIfJobrightOpenStopped(signal);
           addLogForTab(
             tab.id,
             "info",
@@ -7132,15 +7245,16 @@ async function openJobrightJobs() {
             tab.id,
             tab.windowId,
             knownTabIds,
-            6000
-          )) || (await openCapturedApplicationTab(tab));
+            6000,
+            signal
+          )) || (await openCapturedApplicationTab(tab, signal));
         if (applicationTab) {
           openMethod = `${buttonLabel} (opened by Jobright)`;
         }
       }
 
       if (!applicationTab) {
-        const recovered = await ensureJobrightRecommendationsTab(tab.id);
+        const recovered = await ensureJobrightRecommendationsTab(tab.id, signal);
         const message = recovered
           ? `No application URL could be found for ${jobLabel}, so it was skipped.`
           : `The Jobright tab left Recommendations while opening ${jobLabel} and could not be restored.`;
@@ -7156,12 +7270,22 @@ async function openJobrightJobs() {
       }
 
       consecutiveOpenFailures = 0;
+      const openedJob = {
+        jobId, tabId: applicationTab.id,
+        url: applicationTab.pendingUrl || applicationTab.url || "",
+        markedAlreadyApplied: false
+      };
+      openedJobs.push(openedJob);
+      openedInBatch += 1;
+      throwIfJobrightOpenStopped(signal);
       let applicationUrl =
         applicationTab.pendingUrl || applicationTab.url || "";
       try {
         const filteredApplication = await filterJobrightApplicationTabUrl(
           applicationTab.id,
-          tab.id
+          tab.id,
+          2000,
+          signal
         );
         applicationUrl = filteredApplication.url || applicationUrl;
         if (filteredApplication.filtered) {
@@ -7172,6 +7296,7 @@ async function openJobrightJobs() {
           );
         }
       } catch (error) {
+        throwIfJobrightOpenStopped(signal);
         addLogForTab(
           tab.id,
           "info",
@@ -7181,16 +7306,17 @@ async function openJobrightJobs() {
         );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      openedJob.url = applicationUrl;
+      await waitForJobrightOpenDelay(300, signal);
 
       let markedAlreadyApplied = false;
       try {
-        const markResults = await chrome.scripting.executeScript({
+        const markResults = await waitForOperation(() => chrome.scripting.executeScript({
           target: { tabId: tab.id },
           world: "MAIN",
           func: markJobrightApplicationAlreadyApplied,
-          args: [jobId]
-        });
+          args: [jobId, run.id]
+        }));
         const marked = markResults?.[0]?.result;
         markedAlreadyApplied = Boolean(marked?.ok);
 
@@ -7201,19 +7327,14 @@ async function openJobrightJobs() {
           addLogForTab(tab.id, "error", message);
         }
       } catch (error) {
+        throwIfJobrightOpenStopped(signal);
         const message =
           error.message || `Could not mark ${jobLabel} as Already Applied.`;
         failures.push(message);
         addLogForTab(tab.id, "error", message);
       }
 
-      openedJobs.push({
-        jobId,
-        tabId: applicationTab.id,
-        url: applicationUrl,
-        markedAlreadyApplied
-      });
-      openedInBatch += 1;
+      openedJob.markedAlreadyApplied = markedAlreadyApplied;
       addLogForTab(
         tab.id,
         "success",
@@ -7233,13 +7354,13 @@ async function openJobrightJobs() {
           "info",
           `Batch ${completedBatch} complete (${openedJobs.length} of ${count}). Starting the next batch.`
         );
-        await chrome.tabs.update(tab.id, { active: true });
+        await waitForOperation(() => chrome.tabs.update(tab.id, { active: true }));
         openedInBatch = 0;
         // Let the list settle and the freshly opened tabs start loading before
         // driving Jobright again; back-to-back clicks are what stalled runs.
-        await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+        await waitForJobrightOpenDelay(batchDelayMs, signal);
       } else {
-        await new Promise((resolve) => setTimeout(resolve, openDelayMs));
+        await waitForJobrightOpenDelay(openDelayMs, signal);
       }
     }
 
@@ -7267,6 +7388,12 @@ async function openJobrightJobs() {
       );
     }
   } catch (error) {
+    if (signal.aborted) {
+      const message = `Open Jobright stopped. Kept ${openedJobs.length} application tab${openedJobs.length === 1 ? "" : "s"} already opened.`;
+      showStatusForTab(run.ownerTabId, "info", message, "Stopped:");
+      addLogForTab(run.ownerTabId, "info", message);
+      return;
+    }
     console.error(error);
     const rawMessage =
       error.message || "Could not process Jobright recommendations.";
@@ -7277,21 +7404,24 @@ async function openJobrightJobs() {
     showStatusForTab(ownerTabId, "error", message);
     addLogForTab(ownerTabId, "error", message);
   } finally {
-    // Leave the page's window.open untouched so the user's own apply clicks
-    // still open real tabs once the run is over.
+    // Disarm automated popup capture so manual apply clicks open real tabs.
+    if (run.stopPromise) await run.stopPromise;
     if (Number.isInteger(captureArmedTabId)) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: captureArmedTabId },
           world: "MAIN",
-          func: disarmJobrightOpenCapture
+          func: stopJobrightOpenRun,
+          args: [run.id]
         });
       } catch (_error) {
         // The capture disarms itself on a timer if the tab is already gone.
       }
     }
 
+    jobrightOpenRun = null;
     isJobrightOpening = false;
+    updateJobrightOpenControlsDisabledState();
     await refreshCurrentTabActionAvailability();
   }
 }
@@ -8071,7 +8201,7 @@ function markSaveWorkspaceReady({
 
 saveButton?.addEventListener("click", saveCurrentTabUrlFromClick);
 openJobrightJobsButton?.addEventListener("click", openJobrightJobs);
-jobrightPlayButton?.addEventListener("click", openJobrightJobs);
+jobrightPlayButton?.addEventListener("click", toggleJobrightJobs);
 jobrightDeleteButton?.addEventListener("click", () => closeActionGroupTabs("saving-to-docs"));
 
 Object.entries(actionSettingsDialogs).forEach(([action, dialog]) => {
