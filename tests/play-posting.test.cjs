@@ -43,8 +43,10 @@ function fixture({ aiUrl = "https://chatgpt.com/c/current", afterQuery } = {}) {
       calls.numbered.push({ tabId, jobUrl });
       return calls.numbered.length;
     },
-    arrangeAndGroupJobWithAiTab: async (jobTabId, aiTabId) => {
-      calls.grouped.push({ jobTabId, aiTabId });
+    arrangeAndGroupJobWithAiTab: async (jobTabId, aiTabId, options) => {
+      calls.grouped.push({ jobTabId, aiTabId,
+        appendAfterPreviousJob: options?.appendAfterPreviousJob,
+        appendToGroupEnd: options?.appendToGroupEnd });
       tabs.find((tab) => tab.id === jobTabId).groupId = 44;
     },
     waitForTabToMatchUrl: async (tabId, matches) => {
@@ -75,9 +77,70 @@ function fixture({ aiUrl = "https://chatgpt.com/c/current", afterQuery } = {}) {
   load(worker, [
     "isTabInGroup", "isCopilotChatUrl", "isCheckPostingAiUrl", "getPostingAiProviderId",
     "assertActiveJobTabUsable", "selectRightmostUngroupedPostingTab",
-    "playRightmostPostingToAi", "sendPlayPostingTabToAi", "sendCheckPostingToCopilot"
+    "playRightmostPostingToAi", "checkPostingOnce", "sendPlayPostingTabToAi", "sendCheckPostingToCopilot"
   ], context);
   return { context, tabs, calls };
+}
+
+function withRealTabOrdering(base) {
+  const { context, tabs, calls } = base;
+  const storageKey = "checkPostingJobByTabId";
+  context.CHECK_POSTING_JOB_STORAGE_KEY = storageKey;
+  context.CHECK_POSTING_TAB_GROUP_TITLE = "Check with AI";
+  const session = context.chrome.storage?.session || { get: async () => ({}) };
+  const getSession = session.get;
+  context.chrome.storage ||= {};
+  context.chrome.storage.session = {
+    ...session,
+    get: async (key) => ({
+      ...await getSession(key),
+      [storageKey]: Object.fromEntries(calls.remembered.map((job) => [String(job.tabId), job]))
+    })
+  };
+
+  const inWindow = (windowId) => tabs.filter((tab) => tab.windowId === windowId)
+    .sort((left, right) => left.index - right.index);
+  for (const windowId of new Set(tabs.map((tab) => tab.windowId))) {
+    inWindow(windowId).forEach((tab, index) => { tab.index = index; });
+  }
+  calls.moves = [];
+  context.chrome.tabs.move = async (tabId, { windowId, index }) => {
+    calls.moves.push(tabId);
+    const moving = tabs.find((tab) => tab.id === tabId);
+    const oldWindowId = moving.windowId;
+    const destination = inWindow(windowId).filter((tab) => tab.id !== tabId);
+    destination.splice(index < 0 ? destination.length : index, 0, moving);
+    moving.windowId = windowId;
+    destination.forEach((tab, nextIndex) => { tab.index = nextIndex; });
+    if (oldWindowId !== windowId) {
+      inWindow(oldWindowId).forEach((tab, nextIndex) => { tab.index = nextIndex; });
+    }
+    return { ...moving };
+  };
+  context.chrome.tabs.query = async (query) => tabs.filter((tab) =>
+    query.groupId !== undefined ? tab.groupId === query.groupId : tab.windowId === query.windowId
+  ).map((tab) => ({ ...tab }));
+  context.chrome.tabs.group = async ({ tabIds, groupId = 77 }) => {
+    for (const tabId of Array.isArray(tabIds) ? tabIds : [tabIds]) {
+      const joining = tabs.find((tab) => tab.id === tabId);
+      const last = tabs.filter((tab) => tab.groupId === groupId && tab.id !== tabId)
+        .sort((left, right) => right.index - left.index)[0];
+      if (last) {
+        await context.chrome.tabs.move(tabId, {
+          windowId: last.windowId,
+          index: context.indexImmediatelyRightOf(last.index, joining.index, joining.windowId === last.windowId)
+        });
+      }
+      joining.groupId = groupId;
+    }
+    return groupId;
+  };
+  context.chrome.tabGroups = { update: async () => {} };
+  load(worker, ["indexImmediatelyRightOf", "indexImmediatelyLeftOf",
+    "moveTabImmediatelyRightOf", "moveTabImmediatelyLeftOf", "nameCheckPostingTabGroup",
+    "arrangeAndGroupJobWithAiTab"], context);
+  return { ...base, groupOrder: () => tabs.filter((tab) => tab.groupId === tabs[0].groupId)
+    .sort((left, right) => left.index - right.index).map((tab) => tab.id) };
 }
 
 test("Play takes the highest-index eligible tab in the clicked chat's window", async () => {
@@ -87,7 +150,8 @@ test("Play takes the highest-index eligible tab in the clicked chat's window", a
   assert.equal(result.tabId, 1);
   assert.equal(result.submissionNumber, null);
   assert.deepEqual(calls.numbered, []);
-  assert.deepEqual(calls.grouped, [{ jobTabId: 3, aiTabId: 1 }]);
+  assert.deepEqual(calls.grouped, [{ jobTabId: 3, aiTabId: 1,
+    appendAfterPreviousJob: true, appendToGroupEnd: false }]);
   assert.equal(calls.sent[0].text, "https://jobs.example/last");
   assert.equal(calls.sent[0].tabId, 1);
   assert.equal(calls.sent[0].options.aiProviderId, "chatgpt");
@@ -106,6 +170,38 @@ test("each Play picks the next rightmost ungrouped tab and stops when none remai
     "https://jobs.example/last", "https://jobs.example/first"
   ]);
   assert.deepEqual(calls.numbered, []);
+});
+
+test("repeated Play clicks place jobs in check order before unrelated group members", async () => {
+  const base = fixture();
+  base.tabs.push({ id: 7, windowId: 9, index: 4, groupId: 44, url: "https://example.com/unrelated" });
+  const { context, groupOrder } = withRealTabOrdering(base);
+  await context.playRightmostPostingToAi("one", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  await context.playRightmostPostingToAi("two", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 3, 2, 7]);
+});
+
+test("Play creates a group for an ungrouped chat and appends the next job", async () => {
+  const base = fixture();
+  base.tabs[0].groupId = -1;
+  const { context, tabs, groupOrder } = withRealTabOrdering(base);
+  await context.playRightmostPostingToAi("one", { ownerTabId: 1 });
+  assert.equal(tabs[0].groupId, 77);
+  assert.deepEqual(groupOrder(), [1, 3]);
+  await context.playRightmostPostingToAi("two", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 3, 2]);
+});
+
+test("Play uses the AI as its anchor when the previous job was closed or moved out", async () => {
+  for (const action of ["closed", "moved"]) {
+    const { context, tabs, groupOrder } = withRealTabOrdering(fixture());
+    await context.playRightmostPostingToAi("one", { ownerTabId: 1 });
+    if (action === "closed") tabs.splice(tabs.findIndex((tab) => tab.id === 3), 1);
+    else tabs.find((tab) => tab.id === 3).groupId = 55;
+    await context.playRightmostPostingToAi("two", { ownerTabId: 1 });
+    assert.deepEqual(groupOrder(), [1, 2], action);
+  }
 });
 
 test("Play excludes the initiating chat even when it is ungrouped and rightmost", async () => {
@@ -361,6 +457,147 @@ function batchFixture(tabCount = 1) {
   };
 }
 
+test("the main Check posting action appends exactly one tab to the entire group", async () => {
+  const base = batchFixture(5);
+  base.tabs.push({ id: 7, windowId: 9, index: 4, groupId: 44, url: "https://example.com/unrelated" });
+  const { context, calls, state, alarms, groupOrder } = withRealTabOrdering(base);
+  await context.checkPostingOnce("main-one", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 7, 3]);
+  assert.equal(calls.sent.length, 1);
+  assert.equal(state(), undefined);
+  assert.equal(alarms.size, 0);
+  assert.deepEqual(calls.numbered, []);
+  await context.checkPostingOnce("main-two", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 7, 3, 2]);
+  assert.equal(calls.sent.length, 2);
+  assert.equal(alarms.size, 0);
+});
+
+test("the main Check posting action creates a group for an ungrouped AI chat", async () => {
+  const base = batchFixture(3);
+  base.tabs[0].groupId = -1;
+  const { context, groupOrder, state, calls } = withRealTabOrdering(base);
+  await context.checkPostingOnce("main", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 3]);
+  assert.equal(calls.sent.length, 1);
+  assert.equal(state(), undefined);
+});
+
+test("the main Check posting action opens the selected chat outside AI without sending", async () => {
+  const { context, calls, state, alarms } = batchFixture(4);
+  const opened = [];
+  context.makeOrOpenCheckPostingAiTab = async (runId, options) => opened.push({ runId, ...options });
+  await context.checkPostingOnce("main-open", { ownerTabId: 2 });
+  assert.deepEqual(opened, [{ runId: "main-open", ownerTabId: 2 }]);
+  assert.equal(calls.sent.length, 0);
+  assert.equal(state(), undefined);
+  assert.equal(alarms.size, 0);
+});
+
+test("a busy chat's single main-button check does not schedule a retry", async () => {
+  const { context, calls, state, alarms, groupOrder } = withRealTabOrdering(batchFixture(4));
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: false };
+  };
+  const result = await context.checkPostingOnce("main", { ownerTabId: 1 });
+  assert.equal(result.submitted, false);
+  assert.deepEqual(groupOrder(), [1, 3]);
+  assert.equal(calls.sent.length, 1);
+  assert.equal(state(), undefined);
+  assert.equal(alarms.size, 0);
+});
+
+test("main-button checks cannot overlap each other or a Play batch", async () => {
+  const { context, calls, state } = batchFixture(2);
+  let complete;
+  context.sendFillAndSendToTab = () => new Promise(resolve => { complete = resolve; });
+  const running = context.checkPostingOnce("main", { ownerTabId: 1 });
+  while (!complete) await new Promise(setImmediate);
+  await assert.rejects(context.checkPostingOnce("another", { ownerTabId: 1 }), /already being processed/);
+  await assert.rejects(context.startPlayPostingBatch("batch", { ownerTabId: 1 }), /already processing/);
+  complete({ submitted: true });
+  await running;
+  assert.equal(context.playPostingBatchStepRunning, false);
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: true };
+  };
+  await context.startPlayPostingBatch("batch", { ownerTabId: 1 });
+  const sentCount = calls.sent.length;
+  await assert.rejects(context.checkPostingOnce("main-during-batch", { ownerTabId: 1 }), /Play is already running/);
+  assert.equal(state().completedCount, 1);
+  assert.equal(calls.sent.length, sentCount);
+  assert.equal(context.playPostingBatchStepRunning, false);
+});
+
+function mainButtonPanelFixture({ ai = true, sendMessage } = {}) {
+  const calls = [];
+  const errors = [];
+  const button = { disabled: false, setAttribute() {} };
+  const playButton = { disabled: false, setAttribute() {}, querySelector: () => null };
+  const context = vm.createContext({
+    console: { error() {} }, checkPostingButton: button, playButton,
+    activeTabId: 1, areActionButtonsDisabled: false, isCheckPostingRunning: false,
+    isMakeOrOpenAiTabRunning: false, isCurrentTabPlayAiChat: ai, playPostingBatchState: null,
+    beginRunForTab: ownerTabId => ({ ownerTabId, runId: "main" }),
+    addLog() {}, showStatus: (type, message) => errors.push({ type, message }),
+    chrome: { runtime: { sendMessage: async message => {
+      calls.push({ ...message });
+      return sendMessage ? sendMessage(message) : { ok: true };
+    } } }
+  });
+  load(panel, ["updatePlayButtonDisabledState", "updateCheckPostingButtonDisabledState",
+    "makeOrOpenSelectedAiTab", "checkCurrentPosting", "playRightmostPosting"], context);
+  context.updateCheckPostingButtonDisabledState();
+  return { context, button, playButton, calls, errors };
+}
+
+test("the main button opens AI from other pages and shares Play's open lock", async () => {
+  let complete;
+  const { context, button, playButton, calls } = mainButtonPanelFixture({
+    ai: false, sendMessage: () => new Promise(resolve => { complete = resolve; })
+  });
+  context.isCurrentTabGoogleSheet = true;
+  context.isCurrentTabJobright = true;
+  context.updateCheckPostingButtonDisabledState();
+  assert.equal(button.disabled, false);
+  assert.match(button.title, /Open the selected AI chat/);
+  const running = context.checkCurrentPosting();
+  assert.equal(button.disabled, true);
+  assert.equal(playButton.disabled, true);
+  context.activeTabId = 99;
+  await context.checkCurrentPosting();
+  await context.playRightmostPosting();
+  assert.deepEqual(calls, [{ type: "MAKE_OR_OPEN_CHECK_POSTING_AI_TAB", runId: "main", ownerTabId: 1 }]);
+  complete({ ok: true });
+  await running;
+  assert.equal(button.disabled, false);
+  assert.equal(playButton.disabled, false);
+});
+
+test("the main button sends one check from AI and restores controls after failure", async () => {
+  let complete;
+  const { context, button, calls, errors } = mainButtonPanelFixture({
+    sendMessage: () => new Promise(resolve => { complete = resolve; })
+  });
+  assert.match(button.title, /Send one rightmost/);
+  const running = context.checkCurrentPosting();
+  context.activeTabId = 99;
+  await context.checkCurrentPosting();
+  await context.playRightmostPosting();
+  assert.deepEqual(calls, [{ type: "CHECK_POSTING_TO_COPILOT", runId: "main", ownerTabId: 1 }]);
+  complete({ ok: false, error: "No eligible tab." });
+  await running;
+  assert.equal(button.disabled, false);
+  assert.equal(errors[0].message, "No eligible tab.");
+  context.playPostingBatchState = { ownerTabId: 99 };
+  context.updateCheckPostingButtonDisabledState();
+  assert.equal(button.disabled, true);
+  await context.checkCurrentPosting();
+  assert.equal(calls.length, 1);
+});
+
 test("Play count defaults to 1, persists a whole-number selection, and rejects invalid counts", async () => {
   const { context, setConfig } = batchFixture();
   for (const count of [undefined, 0, -1, 1.5, "3", Number.MAX_SAFE_INTEGER + 1]) {
@@ -411,6 +648,35 @@ test("a batch sends rightmost jobs one by one, with random 60–90 second alarms
   maximum.context.Math.random = () => 0.999999;
   await maximum.context.startPlayPostingBatch("batch", { ownerTabId: 1 });
   assert.equal(maximum.state().nextRunAt, 1090000);
+});
+
+test("a Play batch appends jobs in order and a busy-chat retry keeps its position", async () => {
+  const base = batchFixture(3);
+  base.tabs.push({ id: 7, windowId: 9, index: 2, groupId: -1, url: "https://jobs.example/middle" });
+  const { context, calls, state, advance, groupOrder } = withRealTabOrdering(base);
+  let busy = false;
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: !busy };
+  };
+  await context.startPlayPostingBatch("batch", { ownerTabId: 1 });
+  assert.deepEqual(groupOrder(), [1, 3]);
+  await context.restorePlayPostingBatch();
+  busy = true;
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  assert.equal(state().completedCount, 1);
+  const moveCount = calls.moves.length;
+  busy = false;
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.deepEqual(groupOrder(), [1, 3, 7]);
+  assert.equal(calls.moves.length, moveCount);
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.deepEqual(groupOrder(), [1, 3, 7, 2]);
+  assert.equal(state(), null);
 });
 
 test("a busy chat retries the same grouped job and counts only successful submissions", async () => {
@@ -541,7 +807,7 @@ test("the Play hotkey targets the shortcut's tab and ignores other panels", asyn
   let command;
   const context = vm.createContext({
     console, Date,
-    APP_ACTION_COMMANDS: { "play-posting": "play-posting" },
+    APP_ACTION_COMMANDS: { "play-posting": "play-posting", "check-posting": "check-posting" },
     getSidePanelStatus: async () => ({ open: true }),
     notifyExtensionPages: async (message) => messages.push(message),
     chrome: { commands: { onCommand: { addListener: (callback) => { command = callback; } } },
@@ -555,14 +821,23 @@ test("the Play hotkey targets the shortcut's tab and ignores other panels", asyn
   command("play-posting");
   await new Promise(setImmediate);
   assert.equal(messages[1].ownerTabId, 11);
+  command("check-posting", { id: 7 });
+  await new Promise(setImmediate);
+  assert.equal(messages[2].ownerTabId, 7);
 
   const block = panel.match(/  if \(message.type === "HOTKEY_ACTION"\) \{[\s\S]*?\n    return;\r?\n  \}/);
   let starts = 0;
+  let checks = 0;
   context.activeTabId = 7;
   context.playRightmostPosting = () => { starts++; };
+  context.checkCurrentPosting = () => { checks++; };
   vm.runInContext(`function handle(message) { ${block[0]} }`, context);
   context.handle({ type: "HOTKEY_ACTION", action: "play-posting", ownerTabId: 11 });
   assert.equal(starts, 0);
   context.handle({ type: "HOTKEY_ACTION", action: "play-posting", ownerTabId: 7 });
   assert.equal(starts, 1);
+  context.handle({ type: "HOTKEY_ACTION", action: "check-posting", ownerTabId: 11 });
+  assert.equal(checks, 0);
+  context.handle({ type: "HOTKEY_ACTION", action: "check-posting", ownerTabId: 7 });
+  assert.equal(checks, 1);
 });

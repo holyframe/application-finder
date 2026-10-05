@@ -2253,21 +2253,14 @@ function updateCheckPostingButtonDisabledState() {
   const isDisabled =
     areActionButtonsDisabled ||
     isCheckPostingRunning ||
-    Boolean(playPostingBatchState) ||
-    isCurrentTabGoogleSheet ||
-    isCurrentTabJobright;
+    isMakeOrOpenAiTabRunning ||
+    Boolean(playPostingBatchState);
   checkPostingButton.disabled = isDisabled;
   checkPostingButton.setAttribute("aria-disabled", String(isDisabled));
 
-  if (isCurrentTabGoogleSheet) {
-    checkPostingButton.title =
-      "Check posting is available on a job posting page.";
-  } else if (isCurrentTabJobright) {
-    checkPostingButton.title =
-      "Check posting is available on a job posting page.";
-  } else {
-    checkPostingButton.title = "Send this posting URL to the selected AI chat";
-  }
+  checkPostingButton.title = isCurrentTabPlayAiChat
+    ? "Send one rightmost ungrouped, unpinned tab URL to this AI chat"
+    : "Open the selected AI chat, or create it if it is not open";
 }
 
 function isPlayAiChatUrl(url = "") {
@@ -2675,7 +2668,7 @@ async function makeOrOpenSelectedAiTab() {
   }
 
   isMakeOrOpenAiTabRunning = true;
-  updatePlayButtonDisabledState();
+  updateCheckPostingButtonDisabledState();
 
   try {
     const { ownerTabId, runId } = beginRunForTab(activeTabId);
@@ -2693,12 +2686,18 @@ async function makeOrOpenSelectedAiTab() {
     showStatus("error", error.message || "Could not open the AI tab.");
   } finally {
     isMakeOrOpenAiTabRunning = false;
-    updatePlayButtonDisabledState();
+    updateCheckPostingButtonDisabledState();
   }
 }
 
 async function checkCurrentPosting() {
-  if (checkPostingButton?.disabled || isCheckPostingRunning) {
+  if (checkPostingButton?.disabled || isCheckPostingRunning ||
+      areActionButtonsDisabled || isMakeOrOpenAiTabRunning || playPostingBatchState) {
+    return;
+  }
+
+  if (!isCurrentTabPlayAiChat) {
+    await makeOrOpenSelectedAiTab();
     return;
   }
 
@@ -2707,14 +2706,7 @@ async function checkCurrentPosting() {
   updateCheckPostingButtonDisabledState();
 
   try {
-    const tabValidation = await validateActiveBrowserTabForAppAction(
-      requestedOwnerTabId
-    );
-    if (!tabValidation.ok) {
-      throw new Error(tabValidation.error);
-    }
-
-    const { ownerTabId, runId } = beginRunForTab(tabValidation.tabId);
+    const { ownerTabId, runId } = beginRunForTab(requestedOwnerTabId);
     const response = await chrome.runtime.sendMessage({
       type: "CHECK_POSTING_TO_COPILOT",
       runId,
@@ -2722,12 +2714,12 @@ async function checkCurrentPosting() {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Could not send this posting to Copilot.");
+      throw new Error(response?.error || "Could not send the rightmost tab URL to this AI chat.");
     }
   } catch (error) {
     console.error(error);
-    addLog("error", error.message || "Could not send this posting to Copilot.");
-    showStatus("error", error.message || "Could not send this posting to Copilot.");
+    addLog("error", error.message || "Could not send the rightmost tab URL to this AI chat.");
+    showStatus("error", error.message || "Could not send the rightmost tab URL to this AI chat.");
   } finally {
     isCheckPostingRunning = false;
     updateCheckPostingButtonDisabledState();
@@ -5339,7 +5331,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "HOTKEY_ACTION") {
     if (message.action === "open-jobright") {
       openJobrightJobs();
-    } else if (message.action === "check-posting") {
+    } else if (message.action === "check-posting" && message.ownerTabId === activeTabId) {
       checkCurrentPosting();
     } else if (message.action === "play-posting" && message.ownerTabId === activeTabId) {
       playRightmostPosting();

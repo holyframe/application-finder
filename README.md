@@ -58,14 +58,16 @@ focused Chrome window. Confirming Delete removes only the matching Google Sheet
 row and keeps the copied resume document.
 The main action card also has an `Open Google Sheet` button outside the profile
 list. It opens the currently configured workbook in a new, focused Chrome window.
-`Check posting` sends the current job URL into the selected AI chat. The job
-tab and the selected unpinned AI tab are placed in the same group, with the AI
-chat on the left and the job on the right. If the AI tab already belongs to a
-group, the job tab joins that group immediately to the AI tab's right instead of
-creating another group. Otherwise, a new two-tab group is created. In both
-cases, the group is named `Check with AI`. If the chat is not already open, it
-opens before the pair is arranged and grouped. The URL is submitted when the
-chat is idle; if the chat is responding, the URL is only inserted into the
+Outside an AI chat, the `Check posting` main button opens the selected AI chat,
+or creates it if needed, moves its entire `Check with AI` group to the right end
+of that Chrome window, and focuses the AI tab without submitting a posting.
+Inside an unpinned supported AI chat, the main button selects the rightmost
+other ungrouped, unpinned tab in the same window, places it at the right end of
+the AI's `Check with AI` group, and sends its URL. If the AI is ungrouped, a new
+two-tab group is created with the AI on the left and the job on the right.
+Each click processes only one tab regardless of Play's configured tab count;
+it does not schedule another submission or retry. The URL is submitted when
+the chat is idle; if the chat is responding, the URL is only inserted into the
 prompt. Focus stays on that AI chat. Settings stores an editable URL for
 Copilot, Perplexity, and DeepSeek, and which one is selected. Save App still
 writes the original job URL to the Google Sheet. When Save App starts, that
@@ -77,9 +79,13 @@ On other pages, the Play icon beside `Check posting` opens the selected AI chat,
 or creates it if it is not open, then moves its entire `Check with AI` group to
 the right end of that Chrome window. Pinned tabs are left in place.
 On an unpinned ChatGPT, Copilot chat, Perplexity, or DeepSeek tab, Play selects the rightmost other tab
-in that same Chrome window that is neither grouped nor pinned, moves it into
-`Check with AI` beside the current chat, and sends its URL to that chat using
-the Check posting process. In Check posting settings, set Play's number of tabs
+in that same Chrome window that is neither grouped nor pinned and sends its URL
+to that chat. The first job tab is placed
+immediately to the right of the AI chat in `Check with AI`. Each following job
+tab is placed immediately to the right of the previous job tab, keeping jobs in
+the order they were checked across batches and repeated Play clicks. A retry
+keeps the pending job tab in its existing position. Focus stays on the AI chat.
+In Check posting settings, set Play's number of tabs
 (default 1) and assign its own hotkey. The first URL sends immediately. Larger
 batches send one URL at a time, with a random 60–90 second wait before each next
 submission. If the chat is responding, Play retries the same job after another
@@ -175,21 +181,21 @@ columns C-F shift to D-G.
 
 ## Other actions
 
-- **Check posting** on the Home workspace sends the current job URL into the
-  selected AI chat. An already-open unpinned tab with that chat URL is reused.
-  The job and AI tabs are placed in the same group with the AI chat on the left
-  and the job on the right. If the AI tab already has a group, the job tab joins
-  that group immediately to the AI tab's right; no new group is created.
-  Otherwise a new two-tab group is created. The resulting group is named
-  `Check with AI`. The URL is submitted automatically when the selected AI chat
-  is idle. If that chat is currently responding, the URL is inserted into its
-  prompt without being submitted. Focus stays on that AI chat. Settings lets you choose Copilot,
+- **Check posting** on the Home workspace opens or reuses the selected AI chat
+  when clicked outside an AI chat, moves its `Check with AI` group to the right
+  end, and focuses it without sending a posting. Inside a supported unpinned AI
+  chat, it takes one rightmost ungrouped, unpinned tab from the same window,
+  appends it to the right end of that chat's group, and sends its URL. If needed,
+  it creates a `Check with AI` group with the AI on the left and the job on the
+  right. Play's tab count does not affect this main button. The URL is submitted
+  automatically when the chat is idle; while the chat is responding, the URL is
+  inserted into the prompt without submission or a scheduled retry. Focus stays
+  on that AI chat. Settings lets you choose Copilot,
   Perplexity, or DeepSeek and edit each chat URL. Save App
   still records the original job URL in the Google Sheet. Starting Save App also
   moves that job tab into a separate `Saving to Docs` group to the right of the
   selected AI chat. Additional saving tabs reuse that group across Chrome; if
-  necessary, the group moves to the selected AI chat's window. It is available on
-  job posting pages, not Jobright Recommendations or Google Sheets.
+  necessary, the group moves to the selected AI chat's window.
 - **Open Jobright** in the Home workspace has a labeled main button, a joined
   settings icon, and a round Play button. Both the main button and Play open the
   configured number of recommendations. Settings offers counts 1–5, 10, 25, 50, 100, and 150 on

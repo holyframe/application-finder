@@ -48,7 +48,7 @@ function workerHelpers() {
   return context;
 }
 
-test("Check posting opens Copilot and sends the current tab URL", () => {
+test("Check posting opens the selected chat or checks one rightmost tab", () => {
   const checkIndex = html.indexOf('id="checkPostingButton"');
   const settingsIndex = html.indexOf('id="checkPostingOptionsButton"');
   const sheetIndex = html.indexOf('id="openGoogleSheetButton"');
@@ -77,7 +77,7 @@ test("Check posting opens Copilot and sends the current tab URL", () => {
   assert.match(panel, /type: "SAVE_CHECK_POSTING_CONFIG"/);
   assert.match(panel, /providerId: settings\.providerId/);
   assert.match(panel, /urls: settings\.urls/);
-  assert.match(worker, /CHECK_POSTING_TO_COPILOT: sendCheckPostingToCopilot/);
+  assert.match(worker, /CHECK_POSTING_TO_COPILOT: checkPostingOnce/);
   assert.match(worker, /moveJobTabToSavingDocsGroup\(tab\)/);
   assert.match(
     worker,
@@ -97,7 +97,7 @@ test("Check posting opens Copilot and sends the current tab URL", () => {
   assert.match(worker, /tab\.pinned === true/);
   assert.match(worker, /chrome\.tabs\.create\(\{/);
   assert.match(worker, /index: windowTabs\.length/);
-  assert.match(worker, /arrangeAndGroupJobWithAiTab\(ownerTabId, aiTab\.id\)/);
+  assert.match(worker, /arrangeAndGroupJobWithAiTab\(ownerTabId, aiTab\.id, \{/);
   assert.match(worker, /chrome\.tabs\.group\(\{/);
   assert.match(worker, /tabIds: \[aiTabId, jobTabId\]/);
   assert.match(worker, /GET_CHECK_POSTING_CONFIG/);
