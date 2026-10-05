@@ -96,6 +96,13 @@ if no eligible tabs remain and stops if its chat or pending job changes.
 When Play's tab count is greater than 1, successful submissions are numbered
 only in the process log. Play keeps each tab's existing icon and does not
 request additional website permissions.
+The delete icon beside Check posting closes the other tabs in its `Check with AI`
+group and keeps the AI chat. The delete icon beside Open Jobright closes the
+other tabs in `Saving to Docs` and keeps its rightmost job tab. These actions
+use the relevant group in the current Chrome window and wait until ongoing
+saves, posting checks, and Play batches finish. If several matching groups are
+open, the current tab's group is preferred; Check posting otherwise prefers the
+selected chat's group. A group without an AI chat is kept intact.
 If a run stops partway through, completed records and resume copies remain;
 check the sheet before retrying to avoid duplicates.
 

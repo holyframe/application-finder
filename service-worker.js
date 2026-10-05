@@ -3173,6 +3173,84 @@ async function moveJobTabToSavingDocsGroup(jobTab) {
   return true;
 }
 
+async function getTabGroupCleanupTarget(ownerTab, groupType) {
+  const title = groupType === "check-posting" ? CHECK_POSTING_TAB_GROUP_TITLE
+    : groupType === "saving-to-docs" ? SAVING_TO_DOCS_TAB_GROUP_TITLE : "";
+  if (!title) throw new Error("Unknown tab group cleanup action.");
+  const groups = await chrome.tabGroups.query({ windowId: ownerTab.windowId, title });
+  const entries = await Promise.all(groups.filter(group =>
+    group.windowId === ownerTab.windowId && group.title === title
+  ).map(async group => ({
+    group,
+    tabs: (await chrome.tabs.query({ groupId: group.id })).filter(tab =>
+      tab.windowId === ownerTab.windowId && tab.groupId === group.id
+    ).sort((left, right) => left.index - right.index)
+  })));
+  const current = entries.find(entry => entry.group.id === ownerTab.groupId);
+  if (groupType === "saving-to-docs") {
+    const entry = current || entries[0];
+    return entry ? { ...entry, keepTab: entry.tabs.at(-1) } : null;
+  }
+
+  const config = await getCheckPostingConfig();
+  const selectedAi = selectCheckPostingAiTab(entries.flatMap(entry => entry.tabs), config.url, ownerTab.windowId);
+  const entry = current || entries.find(entry => entry.tabs.some(tab => tab.id === selectedAi?.id))
+    || entries.find(entry => entry.tabs.some(tab => getPostingAiProviderId(tab.url || tab.pendingUrl)));
+  if (!entry) return null;
+  const keepTab = entry.tabs.find(tab => tab.id === ownerTab.id && getPostingAiProviderId(tab.url || tab.pendingUrl))
+    || entry.tabs.find(tab => tab.id === selectedAi?.id)
+    || entry.tabs.find(tab => getPostingAiProviderId(tab.url || tab.pendingUrl));
+  return { ...entry, keepTab };
+}
+
+async function cleanupActionTabGroup(runId, { ownerTabId, groupType } = {}) {
+  if (playPostingBatchStarting || playPostingBatchStepRunning || activeSaveRunId || activeSaveProcessControllers.size) {
+    throw new Error("Wait for the current process to finish before closing group tabs.");
+  }
+  // Serialize cleanup with posting submissions and other cleanup requests.
+  playPostingBatchStepRunning = true;
+  try {
+    if (await getPlayPostingBatchState()) {
+      throw new Error("Stop Play from its AI chat tab before closing group tabs.");
+    }
+    const ownerTab = await chrome.tabs.get(Number.isInteger(ownerTabId) ? ownerTabId : getRunOwnerTabId(runId));
+    const target = await getTabGroupCleanupTarget(ownerTab, groupType);
+    if (!target || !target.keepTab) {
+      const title = groupType === "check-posting" ? CHECK_POSTING_TAB_GROUP_TITLE : SAVING_TO_DOCS_TAB_GROUP_TITLE;
+      sendLog(runId, "info", target
+        ? "Check with AI has no AI chat tab to keep. No tabs were closed."
+        : `No ${title} group was found in this Chrome window.`);
+      return { closedCount: 0, keptTabId: null };
+    }
+    const toClose = target.tabs.filter(tab => tab.id !== target.keepTab.id);
+    if (toClose.some(tab => tab.id === ownerTab.id)) {
+      registerRunOwnerTab(runId, target.keepTab.id);
+      await focusBrowserTab(target.keepTab.id);
+    }
+    let closedCount = 0;
+    for (const original of toClose) {
+      if (activeSaveRunId || activeSaveProcessControllers.size) {
+        throw new Error("A save started. The remaining group tabs were left open.");
+      }
+      const keeper = await chrome.tabs.get(target.keepTab.id);
+      const group = await chrome.tabGroups.get(target.group.id);
+      if (keeper.groupId !== group.id || keeper.windowId !== ownerTab.windowId ||
+          group.windowId !== ownerTab.windowId || group.title !== target.group.title ||
+          (groupType === "check-posting" && !getPostingAiProviderId(keeper.url || keeper.pendingUrl))) {
+        throw new Error("The tab group or tab to keep changed. The remaining tabs were left open.");
+      }
+      const tab = await chrome.tabs.get(original.id).catch(() => null);
+      if (!tab || tab.groupId !== group.id || tab.windowId !== ownerTab.windowId) continue;
+      await chrome.tabs.remove(tab.id);
+      closedCount += 1;
+    }
+    sendLog(runId, "success", `Closed ${closedCount} tab${closedCount === 1 ? "" : "s"} in ${target.group.title}; kept ${groupType === "check-posting" ? "the AI chat" : "the rightmost job tab"}.`);
+    return { closedCount, keptTabId: target.keepTab.id, groupId: target.group.id };
+  } finally {
+    playPostingBatchStepRunning = false;
+  }
+}
+
 function selectRightmostUngroupedPostingTab(tabs, aiTab) {
   return (tabs || []).filter((tab) =>
     Number.isInteger(tab?.id) &&
@@ -4874,6 +4952,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     PLAY_RIGHTMOST_POSTING_TO_AI: startPlayPostingBatch,
     CANCEL_PLAY_POSTING_BATCH: cancelPlayPostingBatch,
     MAKE_OR_OPEN_CHECK_POSTING_AI_TAB: makeOrOpenCheckPostingAiTab,
+    CLEANUP_ACTION_TAB_GROUP: cleanupActionTabGroup,
     OPEN_URL_IN_RIGHT_WINDOW: openUrlInRightWindow,
     SEND_TEXT_TO_AI_TAB: sendTextToPickedUpAiTab,
     UPDATE_WORKSPACE_RESUME_CONTEXT: updateWorkspaceResumeContext,
@@ -4917,6 +4996,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           message.type === "CANCEL_PLAY_POSTING_BATCH"
           ? run(message.runId, {
               ownerTabId: message.ownerTabId
+            })
+        : message.type === "CLEANUP_ACTION_TAB_GROUP"
+          ? run(message.runId, {
+              ownerTabId: message.ownerTabId,
+              groupType: message.groupType
             })
         : message.type === "MAKE_OR_OPEN_CHECK_POSTING_AI_TAB"
           ? run(message.runId, {

@@ -148,7 +148,7 @@
             </div>
           </div>
           <div class="jobright-open-section">
-            <div class="home-sheet-actions home-jobright-actions">
+            <div class="home-sheet-actions home-jobright-actions home-tab-cleanup-actions">
               <div
                 class="action-control-group home-sheet-action-group"
                 role="group"
@@ -202,11 +202,22 @@
                   <path d="m8 5 11 7-11 7z" />
                 </svg>
               </button>
+              <button
+                id="jobrightDeleteButton"
+                type="button"
+                class="secondary-button home-delete-button"
+                aria-label="Close Saving to Docs tabs except the last job tab"
+                title="Close tabs in Saving to Docs in this window; keep the rightmost job tab"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
 
-        <div class="home-sheet-actions">
+        <div class="home-sheet-actions home-tab-cleanup-actions">
           <div
             class="action-control-group home-sheet-action-group"
             role="group"
@@ -255,6 +266,17 @@
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m8 5 11 7-11 7z" />
+            </svg>
+          </button>
+          <button
+            id="checkPostingDeleteButton"
+            type="button"
+            class="secondary-button home-delete-button"
+            aria-label="Close Check with AI tabs except the AI chat"
+            title="Close tabs in Check with AI in this window; keep the AI chat"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
             </svg>
           </button>
           <button

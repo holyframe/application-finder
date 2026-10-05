@@ -663,6 +663,10 @@ h1 {
   justify-self: center;
 }
 
+.home-tab-cleanup-actions {
+  grid-template-columns: minmax(0, 1fr) repeat(2, var(--button-height));
+}
+
 .home-sheet-actions .home-sheet-action-group {
   grid-template-columns: minmax(0, 1fr) 30px;
   width: 100%;
@@ -671,7 +675,8 @@ h1 {
   background: rgba(255, 255, 255, 0.76);
 }
 
-.home-sheet-actions .home-play-button {
+.home-sheet-actions .home-play-button,
+.home-sheet-actions .home-delete-button {
   width: var(--button-height);
   margin: 0;
   border-radius: 999px;
@@ -682,12 +687,14 @@ h1 {
   fill: currentColor;
 }
 
-.home-play-button:focus-visible {
+.home-play-button:focus-visible,
+.home-delete-button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-.home-sheet-actions .home-play-button:disabled {
+.home-sheet-actions .home-play-button:disabled,
+.home-sheet-actions .home-delete-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
   transform: none;

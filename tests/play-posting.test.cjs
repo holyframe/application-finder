@@ -275,7 +275,7 @@ test("the panel sends without permission prompts, enables Play for supported cha
   const context = vm.createContext({
     URL, console, playButton: button, activeTabId: 1,
     areActionButtonsDisabled: false, isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
-    isCurrentTabPlayAiChat: true,
+    isCurrentTabPlayAiChat: true, isTabGroupCleanupRunning: false,
     playPostingBatchState: null,
     beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "play" }),
     updateCheckPostingButtonDisabledState: () => context.updatePlayButtonDisabledState(),
@@ -326,7 +326,7 @@ function outsideAiPanelFixture({ batch = null, sendMessage } = {}) {
     console: { error() {} }, playButton: button,
     activeTabId: 1, areActionButtonsDisabled: false,
     isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
-    isCurrentTabPlayAiChat: false, playPostingBatchState: batch,
+    isCurrentTabPlayAiChat: false, playPostingBatchState: batch, isTabGroupCleanupRunning: false,
     beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "open-ai" }),
     updateCheckPostingButtonDisabledState: () => context.updatePlayButtonDisabledState(),
     addLog() {}, showStatus: (type, message) => errors.push({ type, message }),
@@ -540,6 +540,7 @@ function mainButtonPanelFixture({ ai = true, sendMessage } = {}) {
     console: { error() {} }, checkPostingButton: button, playButton,
     activeTabId: 1, areActionButtonsDisabled: false, isCheckPostingRunning: false,
     isMakeOrOpenAiTabRunning: false, isCurrentTabPlayAiChat: ai, playPostingBatchState: null,
+    isTabGroupCleanupRunning: false, updateTabGroupCleanupButtons() {},
     beginRunForTab: ownerTabId => ({ ownerTabId, runId: "main" }),
     addLog() {}, showStatus: (type, message) => errors.push({ type, message }),
     chrome: { runtime: { sendMessage: async message => {
@@ -784,6 +785,7 @@ test("the Play button becomes Stop on its owning chat and is disabled in another
   const context = vm.createContext({
     console, playButton: button, activeTabId: 1, areActionButtonsDisabled: true,
     isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false, isCurrentTabPlayAiChat: true,
+    isTabGroupCleanupRunning: false,
     playPostingBatchState: { ownerTabId: 1, completedCount: 2, tabCount: 5 },
     updateCheckPostingButtonDisabledState: () => context.updatePlayButtonDisabledState(),
     beginRunForTab: (ownerTabId) => ({ ownerTabId, runId: "stop" }),

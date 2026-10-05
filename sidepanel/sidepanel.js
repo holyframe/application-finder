@@ -4,6 +4,7 @@ const saveOptionsButton = document.querySelector("#saveOptionsButton");
 const openGoogleSheetButton = document.querySelector("#openGoogleSheetButton");
 const checkPostingButton = document.querySelector("#checkPostingButton");
 const playButton = document.querySelector("#playButton");
+const checkPostingDeleteButton = document.querySelector("#checkPostingDeleteButton");
 const playPostingTabCountInput = document.querySelector("#playPostingTabCountInput");
 const playPostingHotkeyValue = document.querySelector("#playPostingHotkeyValue");
 const playPostingAssignHotkeyButton = document.querySelector("#playPostingAssignHotkeyButton");
@@ -15,6 +16,7 @@ const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek"];
 const jobrightOpenCountInput = document.querySelector("#jobrightOpenCountInput");
 const openJobrightJobsButton = document.querySelector("#openJobrightJobsButton");
 const jobrightPlayButton = document.querySelector("#jobrightPlayButton");
+const jobrightDeleteButton = document.querySelector("#jobrightDeleteButton");
 const openJobrightOptionsButton = document.querySelector("#openJobrightOptionsButton");
 const saveWorkspaceDownloadOptionsButton = document.querySelector(
   "#saveWorkspaceDownloadOptionsButton"
@@ -359,6 +361,7 @@ let currentTabAvailabilityRequestId = 0;
 let isJobrightOpening = false;
 let isCheckPostingRunning = false;
 let isMakeOrOpenAiTabRunning = false;
+let isTabGroupCleanupRunning = false;
 let isSaveActionRunning = false;
 let isBuildResumeContextModalOpen = false;
 let logEntries = [];
@@ -2231,7 +2234,7 @@ function updateSaveButtonDisabledState() {
   }
 
   const isDisabled =
-    areActionButtonsDisabled || isCurrentTabGoogleSheet || isCurrentTabJobright;
+    areActionButtonsDisabled || isTabGroupCleanupRunning || isCurrentTabGoogleSheet || isCurrentTabJobright;
   saveButton.disabled = isDisabled;
   saveButton.setAttribute("aria-disabled", String(isDisabled));
 
@@ -2246,6 +2249,7 @@ function updateSaveButtonDisabledState() {
 
 function updateCheckPostingButtonDisabledState() {
   updatePlayButtonDisabledState();
+  updateTabGroupCleanupButtons();
   if (!checkPostingButton) {
     return;
   }
@@ -2254,6 +2258,7 @@ function updateCheckPostingButtonDisabledState() {
     areActionButtonsDisabled ||
     isCheckPostingRunning ||
     isMakeOrOpenAiTabRunning ||
+    isTabGroupCleanupRunning ||
     Boolean(playPostingBatchState);
   checkPostingButton.disabled = isDisabled;
   checkPostingButton.setAttribute("aria-disabled", String(isDisabled));
@@ -2290,7 +2295,7 @@ function updatePlayButtonDisabledState() {
     return;
   }
   const ownsBatch = playPostingBatchState?.ownerTabId === activeTabId;
-  const isDisabled = isCheckPostingRunning || (!ownsBatch && (
+  const isDisabled = isCheckPostingRunning || isTabGroupCleanupRunning || (!ownsBatch && (
     areActionButtonsDisabled || isMakeOrOpenAiTabRunning ||
     (isCurrentTabPlayAiChat && Boolean(playPostingBatchState))
   ));
@@ -2313,8 +2318,9 @@ async function loadPlayPostingBatchState() {
 }
 
 function updateJobrightOpenControlsDisabledState() {
+  updateTabGroupCleanupButtons();
   const isDisabled =
-    areActionButtonsDisabled || isJobrightOpening || !isCurrentTabJobright;
+    areActionButtonsDisabled || isTabGroupCleanupRunning || isJobrightOpening || !isCurrentTabJobright;
 
   if (!openJobrightJobsButton) {
     return;
@@ -2332,6 +2338,42 @@ function updateJobrightOpenControlsDisabledState() {
     jobrightPlayButton.title = isDisabled
       ? openJobrightJobsButton.title
       : "Open the selected number of Jobright applications";
+  }
+}
+
+function updateTabGroupCleanupButtons() {
+  const disabled = areActionButtonsDisabled || isSaveActionRunning || isCheckPostingRunning ||
+    isMakeOrOpenAiTabRunning || isJobrightOpening || isTabGroupCleanupRunning || Boolean(playPostingBatchState);
+  for (const button of [checkPostingDeleteButton, jobrightDeleteButton]) {
+    if (!button) continue;
+    button.disabled = disabled;
+    button.setAttribute("aria-disabled", String(disabled));
+  }
+}
+
+async function closeActionGroupTabs(groupType) {
+  if (areActionButtonsDisabled || isSaveActionRunning || isCheckPostingRunning ||
+      isMakeOrOpenAiTabRunning || isJobrightOpening || isTabGroupCleanupRunning || playPostingBatchState) return;
+  const ownerTabId = activeTabId;
+  isTabGroupCleanupRunning = true;
+  updateSaveButtonDisabledState();
+  updateCheckPostingButtonDisabledState();
+  updateJobrightOpenControlsDisabledState();
+  try {
+    const { runId } = beginRunForTab(ownerTabId);
+    const response = await chrome.runtime.sendMessage({
+      type: "CLEANUP_ACTION_TAB_GROUP", runId, ownerTabId, groupType
+    });
+    if (!response?.ok) throw new Error(response?.error || "Could not close the group tabs.");
+  } catch (error) {
+    console.error(error);
+    addLog("error", error.message || "Could not close the group tabs.");
+    showStatus("error", error.message || "Could not close the group tabs.");
+  } finally {
+    isTabGroupCleanupRunning = false;
+    updateSaveButtonDisabledState();
+    updateCheckPostingButtonDisabledState();
+    updateJobrightOpenControlsDisabledState();
   }
 }
 
@@ -8281,6 +8323,7 @@ function markSaveWorkspaceReady({
 saveButton?.addEventListener("click", saveCurrentTabUrlFromClick);
 openJobrightJobsButton?.addEventListener("click", openJobrightJobs);
 jobrightPlayButton?.addEventListener("click", openJobrightJobs);
+jobrightDeleteButton?.addEventListener("click", () => closeActionGroupTabs("saving-to-docs"));
 
 Object.entries(actionSettingsDialogs).forEach(([action, dialog]) => {
   dialog.trigger?.addEventListener("click", () =>
@@ -8515,6 +8558,7 @@ aiProviderInput?.addEventListener("change", syncSaveModeUi);
 openGoogleSheetButton?.addEventListener("click", openConfiguredGoogleSheet);
 checkPostingButton?.addEventListener("click", checkCurrentPosting);
 playButton?.addEventListener("click", playRightmostPosting);
+checkPostingDeleteButton?.addEventListener("click", () => closeActionGroupTabs("check-posting"));
 playPostingAssignHotkeyButton?.addEventListener("click", openChromeShortcutSettings);
 document.querySelectorAll("[data-check-posting-url]").forEach((input) => {
   input.addEventListener("focus", () => {
