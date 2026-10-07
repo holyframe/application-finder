@@ -3354,7 +3354,11 @@ function updatePlayPostingBatchState(update) {
     // Keep storage and the alarm serialized so cancellation cannot recreate an alarm.
     await chrome.alarms.clear(PLAY_POSTING_ALARM_NAME);
     if (nextState?.phase === "waiting") {
-      await chrome.alarms.create(PLAY_POSTING_ALARM_NAME, { when: nextState.nextRunAt });
+      // Keep a later wake-up if an event arrives while a step still holds the lock.
+      // Sending, stopping, and finishing clear this backstop along with the alarm.
+      await chrome.alarms.create(PLAY_POSTING_ALARM_NAME, {
+        when: nextState.nextRunAt, periodInMinutes: 0.5
+      });
     }
     return nextState;
   });
@@ -3419,7 +3423,11 @@ async function runPlayPostingBatchStep() {
   try {
     state = await getPlayPostingBatchState();
     if (!state) return { active: false };
-    if (state.nextRunAt && Date.now() < state.nextRunAt) return { active: true };
+    if (state.nextRunAt && Date.now() < state.nextRunAt) {
+      // An early alarm must leave another wake-up at the saved deadline.
+      const waitingState = await updatePlayPostingBatchState((current) => current);
+      return { active: Boolean(waitingState) };
+    }
     registerRunOwnerTab(state.runId, state.ownerTabId);
     const aiTab = await chrome.tabs.get(state.ownerTabId);
     if (aiTab.pinned || getPostingAiProviderId(aiTab.url) !== state.providerId) {
@@ -3492,7 +3500,7 @@ async function restorePlayPostingBatch() {
   if (state.phase === "sending") {
     await finishPlayPostingBatch(state.runId,
       "Play stopped after Chrome interrupted a submission. Check the chat before restarting Play.", "warning");
-  } else if (state.phase === "waiting") {
+  } else if (state.phase === "waiting" && state.nextRunAt > Date.now()) {
     await updatePlayPostingBatchState((current) => current);
   } else {
     await runPlayPostingBatchStep();

@@ -409,6 +409,8 @@ function batchFixture(tabCount = 1) {
   let session = {};
   let local = { checkPostingConfig: { playTabCount: tabCount } };
   const alarms = new Map();
+  let alarmListener;
+  let alarmStep;
   calls.logs = [];
   calls.alarms = [];
   Object.assign(context, {
@@ -435,6 +437,7 @@ function batchFixture(tabCount = 1) {
     }
   };
   context.chrome.alarms = {
+    onAlarm: { addListener: (listener) => { alarmListener = listener; } },
     clear: async (name) => alarms.delete(name),
     create: async (name, options) => {
       alarms.set(name, options);
@@ -448,9 +451,28 @@ function batchFixture(tabCount = 1) {
     "cancelPlayPostingBatch", "startPlayPostingBatch", "runPlayPostingBatchStep",
     "restorePlayPostingBatch"
   ], context);
+  const runStep = context.runPlayPostingBatchStep;
+  context.runPlayPostingBatchStep = (...args) => {
+    alarmStep = runStep(...args);
+    return alarmStep;
+  };
+  vm.runInContext(worker.match(/^chrome\.alarms\.onAlarm\.addListener\([\s\S]*?^\}\);/m)[0], context);
   return { ...base, alarms,
     state: () => session.playPostingBatch,
     advance: () => { now = session.playPostingBatch.nextRunAt; },
+    fireAlarm: async (fireAt = alarms.get("play-posting-batch")?.when) => {
+      const alarm = alarms.get("play-posting-batch");
+      assert.ok(alarm, "Play must have a scheduled alarm");
+      now = fireAt;
+      // Chrome consumes one-shot alarms when they fire, before dispatching the event.
+      if (alarm.periodInMinutes) {
+        alarms.set("play-posting-batch", { ...alarm, when: now + alarm.periodInMinutes * 60000 });
+      } else {
+        alarms.delete("play-posting-batch");
+      }
+      alarmListener({ name: "play-posting-batch", scheduledTime: alarm.when });
+      await alarmStep;
+    },
     setSession: (state) => { session.playPostingBatch = structuredClone(state); },
     setConfig: (config) => { local.checkPostingConfig = config; }
   };
@@ -790,6 +812,60 @@ test("a busy chat retries the same grouped job and counts only successful submis
   assert.equal(calls.sent[2].text, "https://jobs.example/first");
   assert.equal(calls.numbered.length, 2);
   assert.equal(state(), null);
+});
+
+test("an early alarm keeps a busy-chat retry scheduled until its saved deadline", async () => {
+  const { context, calls, state, alarms, fireAlarm } = batchFixture();
+  let busy = true;
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: !busy };
+  };
+  await context.startPlayPostingBatch("busy", { ownerTabId: 1 });
+  const deadline = state().nextRunAt;
+  busy = false;
+  await fireAlarm(deadline - 1);
+  assert.equal(calls.sent.length, 1, "Never send before the configured wait ends");
+  assert.equal(state().nextRunAt, deadline);
+  assert.ok(alarms.has("play-posting-batch"), "An early event must not strand Play");
+  await fireAlarm();
+  assert.equal(calls.sent.length, 2);
+  assert.equal(calls.sent[1].text, calls.sent[0].text);
+  assert.equal(state(), null);
+  assert.equal(alarms.size, 0);
+});
+
+test("an alarm dispatched while a posting step is locked still has a later wake-up", async () => {
+  const { context, state, calls, alarms, fireAlarm } = batchFixture(2);
+  await context.startPlayPostingBatch("locked", { ownerTabId: 1 });
+  context.playPostingBatchStepRunning = true;
+  await fireAlarm();
+  assert.equal(calls.sent.length, 1);
+  assert.equal(state().phase, "waiting");
+  assert.ok(alarms.has("play-posting-batch"), "The lock must not consume the only wake-up");
+  context.playPostingBatchStepRunning = false;
+  await fireAlarm();
+  assert.equal(calls.sent.length, 2);
+  assert.equal(state(), null);
+  assert.equal(alarms.size, 0);
+});
+
+test("a worker waking after a missed busy-chat alarm runs the overdue retry immediately", async () => {
+  const { context, state, calls, alarms, advance } = batchFixture();
+  let busy = true;
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: !busy };
+  };
+  await context.startPlayPostingBatch("overdue", { ownerTabId: 1 });
+  advance();
+  alarms.clear();
+  busy = false;
+  await context.restorePlayPostingBatch();
+  assert.equal(calls.sent.length, 2, "Restoration must execute an overdue retry");
+  assert.equal(calls.sent[1].text, calls.sent[0].text);
+  assert.equal(state(), null);
+  assert.equal(alarms.size, 0);
 });
 
 test("Stop cancels pending alarms and only the owning AI tab may stop a batch", async () => {
