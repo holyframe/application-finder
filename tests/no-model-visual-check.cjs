@@ -7,7 +7,7 @@ const { chromium } = require("playwright");
 const root = path.resolve(__dirname, "..");
 const css = fs.readFileSync(path.join(root, "sidepanel/sidepanel.css"), "utf8");
 const source = fs.readFileSync(path.join(root, "sidepanel/sidepanel.js"), "utf8");
-const renderer = ["isGoogleSheetsDocumentUrl", "createNoModelProfileProgress"].map((name) =>
+const renderer = ["isGoogleSheetsDocumentUrl", "createNoModelProfileProgress", "renderProfileList"].map((name) =>
   source.match(new RegExp("^function " + name + "\\b[\\s\\S]*?^}\\r?$", "m"))[0]
 ).join("\n");
 const outputDir = process.argv[2];
@@ -27,6 +27,7 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
       <html><head><style>${css}</style></head><body><main class="app">
         <section class="card profile-picker-card">
           <div class="card-title-row"><h2>Profiles</h2></div>
+          <p id="profileJobTitle" class="profile-job-title is-hidden"></p>
           <ul id="profileList" class="profile-list" aria-label="Profiles"></ul>
         </section>
       </main></body></html>`);
@@ -41,37 +42,16 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
       async function cancelSavePostProcess() {}
       function requestDeleteNoModelProfileApplication() {}
       const profileList = document.getElementById("profileList");
-      function addProfileCard(report, profile) {
-        const item = document.createElement("li");
-        item.className = "profile-item has-no-model-progress";
-        item.dataset.profileId = profile.id;
-        item.dataset.saveStatus = profile.status;
-        const header = document.createElement("div");
-        header.className = "profile-item-header";
-        const drag = document.createElement("span");
-        drag.className = "profile-drag-handle";
-        drag.textContent = "\\u22ee";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.className = "profile-selection-checkbox";
-        checkbox.checked = true;
-        const label = document.createElement("button");
-        label.className = "profile-copy profile-name profile-selection-label";
-        const labelText = document.createElement("span");
-        labelText.className = "profile-label";
-        labelText.textContent = profile.name;
-        label.append(labelText);
-        const actions = document.createElement("div");
-        actions.className = "profile-actions";
-        const auto = document.createElement("button");
-        auto.className = "profile-auto-select";
-        auto.textContent = "Auto";
-        actions.append(auto);
-        header.append(drag, checkbox, label, actions);
-        item.append(header, createNoModelProfileProgress(report, profile));
-        profileList.append(item);
-      }
-      function previewStatus(status) {
+      const profileJobTitle = document.getElementById("profileJobTitle");
+      const activeTabId = 7;
+      let noModelProgressByTabId = {};
+      let profileSelectionState;
+      function isNoModelSaveMode() { return true; }
+      function renderProfileResumeSettings() {}
+      function previewStatus(preview) {
+        const status = preview === "cancelling" ? "running" :
+          ["deleting", "deleted"].includes(preview) ? "completed" : preview;
+        isSavePostProcessRequestPending = preview === "cancelling";
         const report = {
           runId: status === "running" ? "visual-run" : "",
           jobTitle: "Senior software engineer - Platform",
@@ -108,14 +88,25 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
         savePostProcessState = status === "running"
           ? { runId: report.runId }
           : null;
-        profileList.replaceChildren();
-        report.profiles.forEach((profile) => addProfileCard(report, profile));
+        if (preview === "deleting") report.profiles[0].deleting = true;
+        if (preview === "deleted") report.profiles[0].deleted = true;
+        noModelProgressByTabId = status === "idle" ? {} : { [activeTabId]: report };
+        profileSelectionState = {
+          selectedProfileIds: report.profiles.map((profile) => profile.id),
+          profiles: report.profiles.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+            selectedPromptResumeId: "resume",
+            promptResumes: [{ id: "resume", label: "Default", autoSelect: false }]
+          }))
+        };
+        renderProfileList();
       }
     ` });
     fs.mkdirSync(outputDir, { recursive: true });
-    for (const width of [320, 440]) {
+    for (const width of [320, 360, 440, 680]) {
       await page.setViewportSize({ width, height: 1000 });
-      for (const status of ["idle", "running", "completed", "failed", "cancelled"]) {
+      for (const status of ["idle", "running", "cancelling", "completed", "deleting", "deleted", "failed", "cancelled"]) {
         await page.evaluate((value) => previewStatus(value), status);
         const dimensions = await page.evaluate(() => ({
           bodyWidth: document.documentElement.clientWidth,
@@ -132,7 +123,23 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
           disabledProgressCount:
             document.querySelectorAll(".no-model-profile-progress.is-disabled").length,
           activeConnectorCount:
-            document.querySelectorAll('[data-connector-state="active"]').length
+            document.querySelectorAll('[data-connector-state="active"]').length,
+          profileHeights: [...document.querySelectorAll(".profile-item")].map(
+            (item) => Math.round(item.getBoundingClientRect().height)
+          ),
+          headerHeights: [...document.querySelectorAll(".profile-item-header")].map(
+            (header) => Math.round(header.getBoundingClientRect().height)
+          ),
+          clippedControls: [...document.querySelectorAll(
+            ".profile-item-header > input, .profile-actions > button, .no-model-profile-action"
+          )].filter((control) => {
+            const card = control.closest(".profile-item").getBoundingClientRect();
+            const bounds = control.getBoundingClientRect();
+            return bounds.left < card.left || bounds.right > card.right;
+          }).length,
+          overflowingSteps: [...document.querySelectorAll(".no-model-profile-steps li")]
+            .filter((step) => step.lastElementChild.getBoundingClientRect().right >
+              step.getBoundingClientRect().right + 1).length
         }));
         assert.equal(dimensions.profileCount, 3);
         assert.equal(dimensions.embeddedProgressCount, 3);
@@ -141,12 +148,18 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
           dimensions.errorCount,
           status === "failed" ? 1 : status === "cancelled" ? 2 : 0
         );
-        const completedCount = status === "idle" ? 0 : status === "completed" ? 3 : 1;
+        const isRunning = ["running", "cancelling"].includes(status);
+        const completedCount = status === "idle" ? 0 :
+          ["completed", "deleting", "deleted"].includes(status) ? 3 : 1;
         assert.equal(dimensions.openSheetCount, completedCount);
-        assert.equal(dimensions.deleteCount, completedCount);
-        assert.equal(dimensions.cancelCount, status === "running" ? 3 : 0);
+        assert.equal(dimensions.deleteCount, completedCount - (status === "deleted" ? 1 : 0));
+        assert.equal(dimensions.cancelCount, isRunning ? 3 : 0);
         assert.equal(dimensions.disabledProgressCount, status === "idle" ? 3 : 0);
-        assert.equal(dimensions.activeConnectorCount, status === "running" ? 1 : 0);
+        assert.equal(dimensions.activeConnectorCount, isRunning ? 1 : 0);
+        assert.equal(dimensions.clippedControls, 0, JSON.stringify({ width, status, ...dimensions }));
+        assert.equal(dimensions.overflowingSteps, 0, JSON.stringify({ width, status, ...dimensions }));
+        assert.ok(dimensions.headerHeights.every((height) => height <= 40),
+          JSON.stringify({ width, status, ...dimensions }));
         assert.ok(
           dimensions.contentWidth <= dimensions.bodyWidth,
           JSON.stringify(dimensions)
@@ -155,6 +168,7 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
           path: path.join(outputDir, `no-model-embedded-${status}-${width}.png`),
           fullPage: true
         });
+        console.log(JSON.stringify({ width, status, heights: dimensions.profileHeights }));
       }
     }
     assert.equal(await page.evaluate(() => {
@@ -167,7 +181,7 @@ if (!outputDir) throw new Error("Pass a screenshot output directory.");
     }), true);
     assert.deepEqual(errors, []);
     console.log(
-      "Visual QA passed: embedded profile progress at 320px and 440px, all states, no overflow."
+      "Visual QA passed: compact profiles at 320px, 360px, 440px, and 680px, all states, no overflow."
     );
   } finally {
     await browser.close();

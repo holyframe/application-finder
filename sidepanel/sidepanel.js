@@ -272,6 +272,7 @@ const jobDescriptionFormModalCancelButton = document.querySelector("#jobDescript
 const jobDescriptionFormModalSubmitButton = document.querySelector("#jobDescriptionFormModalSubmitButton");
 const jobDescriptionContentInput = document.querySelector("#jobDescriptionContentInput");
 const profileList = document.querySelector("#profileList");
+const profileJobTitle = document.querySelector("#profileJobTitle");
 const profileResumeSettingsModal = document.querySelector("#profileResumeSettingsModal");
 const profileResumeSettingsModalTitle = document.querySelector("#profileResumeSettingsModalTitle");
 const profileResumeSettingsModalBackdrop = document.querySelector("#profileResumeSettingsModalBackdrop");
@@ -1681,6 +1682,13 @@ function renderProfileList() {
     ? noModelProgressByTabId[activeTabId]
     : null;
 
+  if (profileJobTitle) {
+    const showJobTitle = Boolean(noModelReport && profileSelectionState.profiles.length);
+    profileJobTitle.classList.toggle("is-hidden", !showJobTitle);
+    profileJobTitle.textContent = showJobTitle ? noModelReport.jobTitle || "Job page" : "";
+    profileJobTitle.title = showJobTitle ? noModelReport.jobUrl || "" : "";
+  }
+
   if (profileSelectionState.profiles.length === 0) {
     const empty = document.createElement("p");
     empty.className = "profile-list-empty";
@@ -2862,16 +2870,12 @@ function createNoModelProfileProgress(report, profile) {
 
   const heading = document.createElement("div");
   heading.className = "no-model-profile-progress-heading";
-  const job = document.createElement("span");
-  job.className = "no-model-profile-job";
-  job.textContent = isIdle ? "Save process" : report.jobTitle || "Job page";
-  job.title = report.jobUrl || "";
   const badge = document.createElement("span");
   badge.className = "no-model-profile-badge";
   const labels = {
     idle: "Not started",
     queued: "Waiting",
-    saved: "Saved",
+    saved: "\u2713 Saved",
     failed: "Failed",
     cancelled: "Cancelled",
     skipped: "Not started"
@@ -2882,35 +2886,31 @@ function createNoModelProfileProgress(report, profile) {
       ? "Deleting"
       : labels[profile.status] ||
         (profile.stage === "sheet" ? "Saving row" : "Copying resume");
-  heading.append(job, badge);
+  heading.append(badge);
+  progress.append(heading);
 
-  const steps = document.createElement("ol");
-  steps.className = "no-model-profile-steps";
-  const stepLabels = [
-    "Page captured",
-    "Resume copied",
-    profile.deleted ? "Sheet removed" : "Sheet saved"
-  ];
-  const stepStates = stepLabels.map((_label, stepIndex) => {
-    const done = !isIdle && (
-      stepIndex === 0 ||
-      (stepIndex === 1 && profile.resumeUrl) ||
-      (stepIndex === 2 && profile.status === "saved")
-    );
-    const current = !isIdle &&
-      stepIndex === (profile.stage === "sheet" ? 2 : 1);
-    const stopped = current &&
-      (profile.status === "failed" || profile.status === "cancelled");
-    return done
-      ? "done"
-      : current && profile.status === "running"
-        ? "active"
-        : stopped
-          ? profile.status
-          : "pending";
-  });
-  stepLabels.forEach(
-    (label, stepIndex) => {
+  const showSteps = !profile.deleted &&
+    ["running", "failed", "cancelled"].includes(profile.status);
+  progress.classList.toggle("has-steps", showSteps);
+  if (showSteps) {
+    const steps = document.createElement("ol");
+    steps.className = "no-model-profile-steps";
+    const stepLabels = ["Page captured", "Resume copied", "Sheet saved"];
+    const shortStepLabels = ["Page", "Resume", "Sheet"];
+    const stepStates = stepLabels.map((_label, stepIndex) => {
+      const done = stepIndex === 0 || (stepIndex === 1 && profile.resumeUrl);
+      const current = stepIndex === (profile.stage === "sheet" ? 2 : 1);
+      const stopped = current &&
+        (profile.status === "failed" || profile.status === "cancelled");
+      return done
+        ? "done"
+        : current && profile.status === "running"
+          ? "active"
+          : stopped
+            ? profile.status
+            : "pending";
+    });
+    stepLabels.forEach((label, stepIndex) => {
       const state = stepStates[stepIndex];
       const done = state === "done";
       const step = document.createElement("li");
@@ -2927,17 +2927,18 @@ function createNoModelProfileProgress(report, profile) {
         "aria-label",
         `${label}: ${state === "done" ? "complete" : state}`
       );
+      step.title = step.getAttribute("aria-label");
       const marker = document.createElement("span");
       marker.className = "no-model-step-marker";
       marker.setAttribute("aria-hidden", "true");
       marker.textContent = done ? "\u2713" : String(stepIndex + 1);
       const caption = document.createElement("span");
-      caption.textContent = label;
+      caption.textContent = shortStepLabels[stepIndex];
       step.append(marker, caption);
       steps.append(step);
-    }
-  );
-  progress.append(heading, steps);
+    });
+    progress.append(steps);
+  }
 
   const actions = document.createElement("div");
   actions.className = "no-model-profile-actions";
@@ -2959,7 +2960,7 @@ function createNoModelProfileProgress(report, profile) {
     cancelButton.title = "Cancel the current save process";
     cancelButton.textContent = isSavePostProcessRequestPending
       ? "Cancelling..."
-      : "Cancel Process";
+      : "Cancel";
     cancelButton.addEventListener("click", async (event) => {
       event?.stopPropagation();
       await cancelSavePostProcess();
@@ -2972,7 +2973,8 @@ function createNoModelProfileProgress(report, profile) {
       "no-model-profile-action no-model-profile-open-sheet";
     link.href = profile.sheetUrl;
     link.title = "Open Google Sheet in a new Chrome window";
-    link.textContent = "Open Google Sheet";
+    link.setAttribute("aria-label", `Open Google Sheet for ${profile.name}`);
+    link.textContent = "Sheet \u2197";
     link.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();

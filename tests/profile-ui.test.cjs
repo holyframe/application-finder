@@ -293,12 +293,9 @@ test("No Model allows selecting a profile without prompt resumes and persists it
   const idleProgress = empty.querySelector(".no-model-profile-progress");
   assert.equal(idleProgress.dataset.status, "idle");
   assert.equal(idleProgress.getAttribute("aria-disabled"), "true");
-  assert.deepEqual(
-    idleProgress.querySelector(".no-model-profile-steps").children.map(
-      (step) => step.dataset.state
-    ),
-    ["pending", "pending", "pending"]
-  );
+  assert.equal(idleProgress.querySelector(".no-model-profile-steps"), null);
+  assert.equal(idleProgress.querySelector(".no-model-profile-badge").textContent, "Not started");
+  assert.ok(node("profileJobTitle").classList.contains("is-hidden"));
   assert.equal(empty.querySelector(".profile-selection-checkbox").disabled, false);
   await ctx.toggleProfileSelection("empty");
   assert.ok(stored().selectedProfileIds.includes("empty"));
@@ -496,17 +493,20 @@ test("per-profile progress renders states, Sheet actions, and follows the owner 
     ".no-model-profile-cancel"
   );
   assert.equal(cancelButtons.length, 2);
-  assert.ok(cancelButtons.every((button) => button.textContent === "Cancel Process"));
+  assert.ok(cancelButtons.every((button) => button.textContent === "Cancel"));
   await cancelButtons[1].listeners.click[0]({ stopPropagation: () => {} });
   assert.equal(cancellationRequests, 1);
   const aliceProgress = getProfile("alice").querySelector(".no-model-profile-progress");
   const openSheet = aliceProgress.querySelector(".no-model-profile-open-sheet");
   const deleteButton = aliceProgress.querySelector(".no-model-profile-delete");
-  assert.equal(openSheet.textContent, "Open Google Sheet");
+  assert.equal(openSheet.textContent, "Sheet \u2197");
+  assert.equal(openSheet.getAttribute("aria-label"), "Open Google Sheet for Alice");
   assert.equal(openSheet.href, "https://docs.google.com/spreadsheets/d/sheet/edit#gid=1");
   assert.equal(deleteButton.textContent, "Delete");
   assert.ok(openSheet.classList.contains("no-model-profile-action"));
   assert.ok(deleteButton.classList.contains("no-model-profile-action"));
+  assert.equal(aliceProgress.querySelector(".no-model-profile-steps"), null);
+  assert.equal(aliceProgress.querySelector(".no-model-profile-badge").textContent, "\u2713 Saved");
   let defaultNavigationPrevented = false;
   await openSheet.listeners.click[0]({
     preventDefault: () => { defaultNavigationPrevented = true; },
@@ -522,9 +522,13 @@ test("per-profile progress renders states, Sheet actions, and follows the owner 
   ]);
   deleteButton.listeners.click[0]();
   assert.equal(ctx.pendingNoModelDeleteTarget.profileId, "alice");
-  assert.match(getProfile("bob").textContent, /<img src=x>/);
+  assert.equal(node("profileJobTitle").textContent, "<img src=x>");
+  assert.equal(node("profileJobTitle").title, "https://jobs.example/1");
+  assert.ok(!node("profileJobTitle").classList.contains("is-hidden"));
+  assert.ok(!getProfile("bob").textContent.includes("<img src=x>"));
   const current = getProfile("bob").querySelector(".no-model-profile-progress");
   assert.equal(current.querySelector(".no-model-profile-steps").children[2].dataset.state, "active");
+  assert.equal(current.querySelector(".no-model-profile-steps").children[2].getAttribute("aria-label"), "Sheet saved: active");
   assert.deepEqual(
     current.querySelector(".no-model-profile-steps").children.slice(0, 2).map(
       (step) => step.dataset.connectorState
@@ -544,8 +548,43 @@ test("per-profile progress renders states, Sheet actions, and follows the owner 
   );
   assert.equal(nextTabProgress.length, 3);
   assert.ok(nextTabProgress.every((progress) => progress.dataset.status === "idle"));
+  assert.ok(node("profileJobTitle").classList.contains("is-hidden"));
+  assert.equal(node("profileJobTitle").textContent, "");
   assert.equal(node("profileList").querySelectorAll(".no-model-profile-cancel").length, 0);
   assert.ok(!html.includes('id="noModelProgressPanel"'));
+});
+
+test("compact progress preserves waiting, cancellation, and deletion results", () => {
+  const { ctx } = fixture();
+  const report = { status: "cancelled", error: "Save cancelled." };
+  const profile = { id: "alice", name: "Alice", status: "queued", stage: "resume" };
+  let progress = ctx.createNoModelProfileProgress(report, profile);
+  assert.equal(progress.querySelector(".no-model-profile-badge").textContent, "Waiting");
+  assert.equal(progress.querySelector(".no-model-profile-steps"), null);
+
+  profile.status = "cancelled";
+  progress = ctx.createNoModelProfileProgress(report, profile);
+  assert.equal(progress.querySelector(".no-model-profile-badge").textContent, "Cancelled");
+  assert.equal(progress.querySelector(".no-model-profile-steps").children[1].dataset.state, "cancelled");
+  assert.equal(progress.querySelector(".no-model-profile-error").textContent, "Save cancelled.");
+
+  profile.status = "saved";
+  profile.sheetUrl = "https://docs.google.com/spreadsheets/d/sheet/edit#gid=1";
+  profile.deleting = true;
+  profile.deleteError = "Could not delete the Sheet row.";
+  progress = ctx.createNoModelProfileProgress(report, profile);
+  assert.equal(progress.querySelector(".no-model-profile-badge").textContent, "Deleting");
+  assert.equal(progress.querySelector(".no-model-profile-delete").disabled, true);
+  assert.equal(progress.querySelector(".no-model-profile-error").textContent, profile.deleteError);
+
+  profile.deleting = false;
+  profile.deleted = true;
+  profile.deleteError = "";
+  progress = ctx.createNoModelProfileProgress(report, profile);
+  assert.equal(progress.querySelector(".no-model-profile-badge").textContent, "Deleted");
+  assert.equal(progress.querySelector(".no-model-profile-delete"), null);
+  assert.equal(progress.querySelector(".no-model-profile-steps"), null);
+  assert.ok(progress.querySelector(".no-model-profile-open-sheet"));
 });
 
 test("No Model uses profile Cancel buttons instead of the header control", () => {

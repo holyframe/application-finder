@@ -51,12 +51,14 @@ to that profile's sheet tab. No AI prompt, job description, or prompt-resume
 selection is required. The job-description card and automatic editor are hidden.
 No Context Doc, new browser tab, or Application workspace is opened; the job page
 stays in place. Column D contains `No Model`. In No Model mode, every profile card shows its
-process panel from the start in a muted, disabled state. During saving, animated
-connectors advance through page capture, resume copy, and Sheet save. Each involved
+compact status line from the start in a muted, disabled state. The job title is
+shown once above the profile list. During saving, inline steps and animated
+connectors advance through page capture, resume copy, and Sheet save. Completed
+profiles replace the steps with a saved status and compact Sheet and Delete actions. Each involved
 profile shows waiting, saved, failed, and cancelled states. Results remain visible for that job tab until its next No Model
 save or until the tab closes. Existing AI text inputs and profile selections are
 preserved when the process finishes.
-After a profile is saved, its progress area shows matching `Open Google Sheet`
+After a profile is saved, its progress area shows matching `Sheet ↗`
 and `Delete` actions. The Sheet action opens that profile's exact tab in a new,
 focused Chrome window. Confirming Delete removes only the matching Google Sheet
 row and keeps the copied resume document.
