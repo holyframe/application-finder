@@ -43,10 +43,11 @@ function panelFixture({ claim, normalize, create, startError } = {}) {
   const context = vm.createContext({
     console: { error() {} }, URL, Date, AbortController, Set, ...clock,
     activeTabId: 8, areActionButtonsDisabled: false, isCurrentTabJobright: true,
-    isTabGroupCleanupRunning: false, isJobrightOpening: false, jobrightOpenRun: null,
+    isTabGroupCleanupRunning: false, isJobrightOpening: false, jobrightOpenRun: null, playPostingBatchState: null,
+    isCheckPostingRunning: false, isMakeOrOpenAiTabRunning: false,
     openJobrightJobsButton: button(), jobrightPlayButton: button(), jobrightOpenCountInput: { value: "2" },
     createRunId: () => "run-" + ++runNumber,
-    clearStatus() {}, updateTabGroupCleanupButtons() {},
+    clearStatus() {}, updateTabGroupCleanupButtons() {}, updateCheckPostingButtonDisabledState() {},
     addLogForTab: (tabId, type, message) => calls.logs.push({ tabId, type, message }),
     showStatusForTab: (tabId, type, message) => calls.statuses.push({ tabId, type, message }),
     refreshCurrentTabActionAvailability: async () => { calls.refreshes++; context.updateJobrightOpenControlsDisabledState(); },
@@ -65,6 +66,7 @@ function panelFixture({ claim, normalize, create, startError } = {}) {
       },
       runtime: { sendMessage: async message => normalize ? normalize(message) : { ok: true, url: message.url } },
       scripting: { executeScript: async options => {
+        if (options.files) { calls.scripts.push({ name: options.files[0], tabId: options.target.tabId }); return []; }
         calls.scripts.push({ name: options.func.name, args: [...(options.args || [])], tabId: options.target.tabId });
         switch (options.func.name) {
           case "startJobrightOpenRun": return [{ result: { ok: !startError, error: startError } }];
@@ -184,6 +186,19 @@ test("both Jobright start buttons complete normally, restore Play, and can run a
   assert.equal(calls.statuses.filter(status => status.type === "success").length, 2);
   assert.equal(context.jobrightPlayButton.disabled, false);
   assert.equal(context.jobrightPlayButton.attributes.d, "m8 5 11 7-11 7z");
+});
+
+test("automatic Jobright runs use the captured tab and count even if the panel is on another tab", async () => {
+  const { context, calls } = panelFixture();
+  context.activeTabId = 99;
+  context.openJobrightJobsButton.disabled = true;
+  context.waitForJobrightOpenDelay = async () => {};
+  await context.openJobrightJobs({ ownerTabId: 8, count: 5, runId: "automatic-run" });
+  assert.equal(calls.created.length, 5);
+  assert.equal(calls.scripts.filter(call => call.name === "markJobrightApplicationAlreadyApplied").length, 5);
+  assert.ok(calls.scripts.every(call => call.tabId === 8));
+  assert.ok(calls.scripts.filter(call => call.name === "startJobrightOpenRun").every(call => call.args[0] === "automatic-run"));
+  assert.equal(calls.scripts[0].name, "content/jobright.js");
 });
 
 test("a helper startup error restores Play and the main button", async () => {

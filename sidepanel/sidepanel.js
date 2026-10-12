@@ -4,6 +4,7 @@ const saveOptionsButton = document.querySelector("#saveOptionsButton");
 const openGoogleSheetButton = document.querySelector("#openGoogleSheetButton");
 const checkPostingButton = document.querySelector("#checkPostingButton");
 const playButton = document.querySelector("#playButton");
+const doublePlayButton = document.querySelector("#doublePlayButton");
 const checkPostingDeleteButton = document.querySelector("#checkPostingDeleteButton");
 const playPostingTabCountInput = document.querySelector("#playPostingTabCountInput");
 const playPostingDelayMinInput = document.querySelector("#playPostingDelayMinInput");
@@ -12,6 +13,7 @@ const playPostingHotkeyValue = document.querySelector("#playPostingHotkeyValue")
 const playPostingAssignHotkeyButton = document.querySelector("#playPostingAssignHotkeyButton");
 const PLAY_POSTING_BATCH_STORAGE_KEY = "playPostingBatch";
 let playPostingBatchState = null;
+let isPlayPostingJobrightContinuing = false;
 const checkPostingOptionsButton = document.querySelector("#checkPostingOptionsButton");
 const checkPostingAutoNextTabInput = document.querySelector("#checkPostingAutoNextTabInput");
 const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek"];
@@ -2276,6 +2278,7 @@ function updateSaveButtonDisabledState() {
 
 function updateCheckPostingButtonDisabledState() {
   updatePlayButtonDisabledState();
+  updateDoublePlayButtonDisabledState();
   updateTabGroupCleanupButtons();
   if (!checkPostingButton) {
     return;
@@ -2321,7 +2324,7 @@ function updatePlayButtonDisabledState() {
   if (!playButton) {
     return;
   }
-  const ownsBatch = playPostingBatchState?.ownerTabId === activeTabId;
+  const ownsBatch = !playPostingBatchState?.allTabs && playPostingBatchState?.ownerTabId === activeTabId;
   const isDisabled = isCheckPostingRunning || isTabGroupCleanupRunning || (!ownsBatch && (
     areActionButtonsDisabled || isMakeOrOpenAiTabRunning ||
     (isCurrentTabPlayAiChat && Boolean(playPostingBatchState))
@@ -2338,6 +2341,23 @@ function updatePlayButtonDisabledState() {
     : "Send the rightmost ungrouped, unpinned tab URL to this AI chat";
 }
 
+function updateDoublePlayButtonDisabledState() {
+  if (!doublePlayButton) return;
+  const ownsBatch = playPostingBatchState?.allTabs && playPostingBatchState.windowId === panelWindowId;
+  const stopping = ownsBatch && jobrightOpenRun?.controller.signal.aborted === true;
+  const disabled = stopping || isCheckPostingRunning || isTabGroupCleanupRunning ||
+    (!ownsBatch && (areActionButtonsDisabled || isMakeOrOpenAiTabRunning ||
+      isJobrightOpening || Boolean(playPostingBatchState)));
+  doublePlayButton.disabled = Boolean(disabled);
+  doublePlayButton.setAttribute("aria-disabled", String(Boolean(disabled)));
+  doublePlayButton.setAttribute("aria-label", ownsBatch ? "Stop Double Play" : "Check all postings, then open Jobright");
+  doublePlayButton.querySelector("path")?.setAttribute("d",
+    ownsBatch ? "M7 7h10v10H7z" : "m3 5 9 7-9 7z m10 0 9 7-9 7z");
+  doublePlayButton.title = ownsBatch
+    ? stopping ? "Stopping Double Play..." : "Stop checking postings and opening Jobright applications"
+    : "Check all available posting tabs, then open the configured number of Jobright applications";
+}
+
 async function loadPlayPostingBatchState() {
   const stored = await chrome.storage.session.get(PLAY_POSTING_BATCH_STORAGE_KEY);
   playPostingBatchState = stored[PLAY_POSTING_BATCH_STORAGE_KEY] || null;
@@ -2347,7 +2367,9 @@ async function loadPlayPostingBatchState() {
 function updateJobrightOpenControlsDisabledState() {
   updateTabGroupCleanupButtons();
   const isDisabled =
-    areActionButtonsDisabled || isTabGroupCleanupRunning || isJobrightOpening || !isCurrentTabJobright;
+    areActionButtonsDisabled || isTabGroupCleanupRunning || isCheckPostingRunning ||
+    isMakeOrOpenAiTabRunning || isJobrightOpening ||
+    Boolean(playPostingBatchState) || !isCurrentTabJobright;
 
   if (!openJobrightJobsButton) {
     return;
@@ -2504,6 +2526,7 @@ function setSaveButtonsDisabled(disabled) {
   if (deleteApplicationModalConfirmButton) {
     deleteApplicationModalConfirmButton.disabled = disabled;
   }
+  if (!disabled) continuePlayPostingJobright().catch(console.error);
 }
 
 function setSaveButtonsDisabledForTab(tabId, disabled) {
@@ -2816,7 +2839,7 @@ async function checkCurrentPosting() {
 }
 
 async function playRightmostPosting() {
-  const ownsBatch = playPostingBatchState?.ownerTabId === activeTabId;
+  const ownsBatch = !playPostingBatchState?.allTabs && playPostingBatchState?.ownerTabId === activeTabId;
   if (playButton?.disabled || isCheckPostingRunning || (!ownsBatch && areActionButtonsDisabled)) {
     return;
   }
@@ -2847,6 +2870,105 @@ async function playRightmostPosting() {
   } finally {
     isCheckPostingRunning = false;
     updateCheckPostingButtonDisabledState();
+  }
+}
+
+async function playAllPostingsThenJobright() {
+  const batch = playPostingBatchState;
+  const ownsBatch = batch?.allTabs && batch.windowId === panelWindowId;
+  if (doublePlayButton?.disabled || isCheckPostingRunning || isTabGroupCleanupRunning ||
+      (!ownsBatch && (areActionButtonsDisabled || isMakeOrOpenAiTabRunning || isJobrightOpening || batch))) return;
+  if (ownsBatch && batch.phase === "jobright-running") {
+    await stopJobrightJobs();
+    return;
+  }
+  const requestedOwnerTabId = ownsBatch ? batch.ownerTabId : activeTabId;
+  isCheckPostingRunning = true;
+  updateCheckPostingButtonDisabledState();
+  try {
+    updateJobrightOpenControlsDisabledState();
+    if (!ownsBatch && !await saveJobrightSettings()) return;
+    const { runId, ownerTabId } = beginRunForTab(requestedOwnerTabId);
+    const response = await chrome.runtime.sendMessage({
+      type: ownsBatch ? "CANCEL_PLAY_POSTING_BATCH" : "PLAY_ALL_POSTINGS_THEN_JOBRIGHT",
+      runId, ownerTabId
+    });
+    if (!response?.ok) throw new Error(response?.error || "Could not start Double Play.");
+    await loadPlayPostingBatchState();
+  } catch (error) {
+    console.error(error);
+    addLog("error", error.message);
+    showStatus("error", error.message);
+  } finally {
+    isCheckPostingRunning = false;
+    updateCheckPostingButtonDisabledState();
+    updateJobrightOpenControlsDisabledState();
+    continuePlayPostingJobright().catch(console.error);
+  }
+}
+
+async function continuePlayPostingJobright() {
+  const batch = playPostingBatchState;
+  if (batch?.phase !== "jobright-ready" || batch.windowId !== panelWindowId ||
+      isPlayPostingJobrightContinuing || isJobrightOpening || isCheckPostingRunning ||
+      areActionButtonsDisabled || isSaveActionRunning || isTabGroupCleanupRunning) return;
+  isPlayPostingJobrightContinuing = true;
+  const jobrightRunId = createRunId();
+  let port = null;
+  let claimed = false;
+  let keepAliveTimer = null;
+  const onDisconnect = () => {
+    if (claimed && jobrightOpenRun?.id === jobrightRunId) stopJobrightJobs().catch(console.error);
+  };
+  try {
+    port = chrome.runtime.connect({ name: "play-posting-jobright" });
+    port.onDisconnect.addListener(onDisconnect);
+    const response = await new Promise((resolve, reject) => {
+      const onMessage = (message) => {
+        port.onMessage.removeListener(onMessage);
+        port.onDisconnect.removeListener(onLostConnection);
+        resolve(message);
+      };
+      const onLostConnection = () => {
+        port.onMessage.removeListener(onMessage);
+        reject(new Error("Double Play lost its connection before Open Jobright started."));
+      };
+      port.onMessage.addListener(onMessage);
+      port.onDisconnect.addListener(onLostConnection);
+      port.postMessage({ type: "claim", runId: batch.runId, windowId: panelWindowId, jobrightRunId });
+    });
+    if (!response.ok) {
+      if (response.error) throw new Error(response.error);
+      return;
+    }
+    claimed = true;
+    // Messages keep the extension worker alive during larger Jobright runs.
+    keepAliveTimer = setInterval(() => {
+      try { port.postMessage({ type: "keep-alive" }); } catch (_error) { onDisconnect(); }
+    }, 20000);
+    await openJobrightJobs({ ownerTabId: response.state.jobrightTabId,
+      count: response.state.jobrightCount, runId: jobrightRunId });
+    await new Promise((resolve) => {
+      const finish = () => {
+        port.onMessage.removeListener(onMessage);
+        port.onDisconnect.removeListener(finish);
+        resolve();
+      };
+      const onMessage = (message) => { if (message.finished || message.error) finish(); };
+      port.onMessage.addListener(onMessage);
+      port.onDisconnect.addListener(finish);
+      port.postMessage({ type: "finished" });
+    });
+  } catch (error) {
+    addLogForTab(batch.jobrightTabId, "error", error.message);
+    showStatusForTab(batch.jobrightTabId, "error", error.message);
+  } finally {
+    clearInterval(keepAliveTimer);
+    port?.onDisconnect.removeListener(onDisconnect);
+    port?.disconnect();
+    isPlayPostingJobrightContinuing = false;
+    await loadPlayPostingBatchState();
+    updateJobrightOpenControlsDisabledState();
   }
 }
 
@@ -5158,6 +5280,7 @@ async function runCurrentAppAction() {
     await runCurrentAppActionOnce();
   } finally {
     isSaveActionRunning = false;
+    continuePlayPostingJobright().catch(console.error);
   }
 }
 
@@ -6714,6 +6837,24 @@ function normalizeJobrightOpenCount() {
   return count;
 }
 
+async function loadJobrightSettings() {
+  const { jobrightConfig } = await chrome.storage.local.get("jobrightConfig");
+  const count = jobrightConfig?.openCount;
+  if (jobrightOpenCountInput) {
+    jobrightOpenCountInput.value = String(Number.isSafeInteger(count) && count >= 1 && count <= 150 ? count : 3);
+  }
+}
+
+async function saveJobrightSettings() {
+  try {
+    await chrome.storage.local.set({ jobrightConfig: { openCount: normalizeJobrightOpenCount() } });
+    return true;
+  } catch (error) {
+    showStatus("error", error.message || "Could not save Jobright settings.");
+    return false;
+  }
+}
+
 // Every Jobright page interaction lives in content/jobright.js, which runs in
 // the page's own realm at document_start so it can read the job data the app
 // loads. The functions below are the thin bodies injected to reach it.
@@ -6819,6 +6960,7 @@ async function stopJobrightJobs() {
   if (!run || run.controller.signal.aborted) return;
   run.controller.abort();
   updateJobrightOpenControlsDisabledState();
+  updateCheckPostingButtonDisabledState();
   addLogForTab(run.ownerTabId, "info", "Stop requested. Ending Open Jobright...");
   if (Number.isInteger(run.ownerTabId)) {
     run.stopPromise = Promise.resolve().then(() => chrome.scripting.executeScript({
@@ -7003,23 +7145,25 @@ async function ensureJobrightRecommendationsTab(tabId, signal) {
   return false;
 }
 
-async function openJobrightJobs() {
-  if (isJobrightOpening || openJobrightJobsButton?.disabled) {
+async function openJobrightJobs(options = {}) {
+  const automatic = Number.isInteger(options.ownerTabId) && Number.isInteger(options.count);
+  if (isJobrightOpening || (!automatic && openJobrightJobsButton?.disabled)) {
     return;
   }
 
-  const count = normalizeJobrightOpenCount();
-  const ownerTabId = activeTabId;
+  const count = automatic ? Math.min(150, Math.max(1, options.count)) : normalizeJobrightOpenCount();
+  const ownerTabId = automatic ? options.ownerTabId : activeTabId;
   const processedJobIds = [];
   const openedJobs = [];
   const failures = [];
   let captureArmedTabId = null;
-  const run = { id: createRunId(), ownerTabId, controller: new AbortController(), stopPromise: null };
+  const run = { id: options.runId || createRunId(), ownerTabId, controller: new AbortController(), stopPromise: null };
   const signal = run.controller.signal;
   const waitForOperation = (operation) => waitForJobrightOpenOperation(operation, signal);
   jobrightOpenRun = run;
   isJobrightOpening = true;
   updateJobrightOpenControlsDisabledState();
+  updateCheckPostingButtonDisabledState();
   clearStatus();
   addLogForTab(
     ownerTabId,
@@ -7046,6 +7190,17 @@ async function openJobrightJobs() {
 
     captureArmedTabId = tab.id;
     run.ownerTabId = tab.id;
+    if (automatic) {
+      const deadline = Date.now() + 30000;
+      while ((await waitForOperation(() => chrome.tabs.get(tab.id))).status === "loading") {
+        if (Date.now() >= deadline) throw new Error("Jobright is still loading. Try Double Play again when Recommendations is ready.");
+        await waitForJobrightOpenDelay(250, signal);
+      }
+      // Install the helper for a Jobright page left open across extension updates.
+      await waitForOperation(() => chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: "MAIN", files: ["content/jobright.js"]
+      }));
+    }
     const startResults = await waitForOperation(() => chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: "MAIN",
       func: startJobrightOpenRun, args: [run.id]
@@ -7424,6 +7579,7 @@ async function openJobrightJobs() {
     jobrightOpenRun = null;
     isJobrightOpening = false;
     updateJobrightOpenControlsDisabledState();
+    updateCheckPostingButtonDisabledState();
     await refreshCurrentTabActionAvailability();
   }
 }
@@ -8217,6 +8373,7 @@ Object.entries(actionSettingsDialogs).forEach(([action, dialog]) => {
     setActionSettingsModalOpen(action, false)
   );
   dialog.doneButton?.addEventListener("click", async () => {
+    if (action === "open" && !await saveJobrightSettings()) return;
     if (action === "checkPosting") {
       const saved = await saveCheckPostingSettings();
       if (!saved) {
@@ -8232,7 +8389,7 @@ saveOptionsButton?.addEventListener("click", () => setConfigModalOpen(true));
 saveAssignHotkeyButton?.addEventListener("click", openChromeShortcutSettings);
 
 window.addEventListener("focus", refreshActionHotkeys);
-jobrightOpenCountInput?.addEventListener("change", normalizeJobrightOpenCount);
+jobrightOpenCountInput?.addEventListener("change", saveJobrightSettings);
 
 homeCancelProcessButton?.addEventListener("click", cancelSavePostProcess);
 applicationCancelProcessButton?.addEventListener(
@@ -8417,6 +8574,7 @@ aiProviderInput?.addEventListener("change", syncSaveModeUi);
 openGoogleSheetButton?.addEventListener("click", openConfiguredGoogleSheet);
 checkPostingButton?.addEventListener("click", checkCurrentPosting);
 playButton?.addEventListener("click", playRightmostPosting);
+doublePlayButton?.addEventListener("click", playAllPostingsThenJobright);
 checkPostingDeleteButton?.addEventListener("click", () => closeActionGroupTabs("check-posting"));
 playPostingAssignHotkeyButton?.addEventListener("click", openChromeShortcutSettings);
 document.querySelectorAll("[data-check-posting-url]").forEach((input) => {
@@ -8662,7 +8820,13 @@ chrome.windows.onRemoved.addListener((windowId) => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "session" && changes[PLAY_POSTING_BATCH_STORAGE_KEY]) {
     playPostingBatchState = changes[PLAY_POSTING_BATCH_STORAGE_KEY].newValue || null;
+    if (isPlayPostingJobrightContinuing && jobrightOpenRun &&
+        playPostingBatchState?.jobrightRunId !== jobrightOpenRun.id) {
+      stopJobrightJobs().catch(console.error);
+    }
     updateCheckPostingButtonDisabledState();
+    updateJobrightOpenControlsDisabledState();
+    continuePlayPostingJobright().catch(console.error);
   }
   if (areaName === "session" && changes[NO_MODEL_PROGRESS_STORAGE_KEY]) {
     noModelProgressByTabId = changes[NO_MODEL_PROGRESS_STORAGE_KEY].newValue || {};
@@ -8671,6 +8835,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
     return;
   }
+
+  if (changes.jobrightConfig) loadJobrightSettings().catch(console.error);
 
   if (
     changes[PROFILE_SELECTION_STORAGE_KEY] ||
@@ -8714,12 +8880,13 @@ updateDeletedRowsState();
 loadProfileSelection();
 loadPromptSelection();
 let didRestorePanelStartupState = false;
-Promise.all([loadSheetConfig(), loadNoModelSaveProgress(), loadJobDescriptionSelection(), restoreTabSession(), loadPlayPostingBatchState()])
+Promise.all([loadSheetConfig(), loadNoModelSaveProgress(), loadJobDescriptionSelection(), restoreTabSession(), loadPlayPostingBatchState(), loadJobrightSettings()])
   .then(() => { didRestorePanelStartupState = true; })
   .catch((error) => {
     console.error("Could not restore side panel startup state:", error);
   })
   .then(() => initActiveTabTracking())
+  .then(() => { continuePlayPostingJobright().catch(console.error); })
   .then(() => loadSavePostProcessState())
   .then(() => { isProtectedCloseReady = didRestorePanelStartupState; })
   .finally(() => {

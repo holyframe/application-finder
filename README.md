@@ -108,6 +108,19 @@ if no eligible tabs remain and stops if its chat or pending job changes.
 When Play's tab count is greater than 1, successful submissions are numbered
 only in the process log. Play keeps each tab's existing icon and does not
 request additional website permissions.
+The double-play icon (two triangles) beside Check posting checks every available
+ungrouped, unpinned posting tab in the current Chrome window, then focuses
+Jobright Recommendations and automatically runs Open Jobright with the saved
+Applications to open count. It opens the selected AI chat when started outside
+an AI chat and opens Jobright Recommendations if needed. AI chats, Jobright,
+Google Sheets, and browser pages are excluded from the posting batch. The
+available tabs and Jobright count are captured when clicked; the single Play
+tab limit does not apply. Double Play uses the same wait and busy-chat retry
+settings as Play. Click its Stop icon to end the remaining process. If the
+panel closes during checks, the Jobright handoff waits until the panel reopens
+in that window; closing the panel during Open Jobright stops further automated
+actions and keeps application tabs already opened. Jobright's count is saved
+when changed and restored when the panel opens.
 The delete icon beside Check posting closes the other tabs in its `Check with AI`
 group and keeps the AI chat. The delete icon beside Open Jobright closes the
 other tabs in `Saving to Docs` and keeps its rightmost job tab. These actions
@@ -361,4 +374,12 @@ node --check service-worker.js
 node --check sidepanel\sidepanel.js
 node --check content\chatgpt.js
 node --check content\ai-provider.js
+node --test tests/*.test.cjs
+```
+
+With Playwright available through `NODE_PATH`, the optional browser check uses
+a fresh profile and synthetic pages to verify the entire Double Play workflow:
+
+```powershell
+node tests/double-play-browser-check.cjs msedge
 ```

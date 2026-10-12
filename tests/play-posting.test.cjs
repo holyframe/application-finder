@@ -445,11 +445,13 @@ function batchFixture(tabCount = 1) {
     }
   };
   load(worker, [
+    "isJobrightUrl", "isJobrightRecommendationsUrl", "isGoogleSheetsDocumentUrl", "getAvailablePostingTabs",
     "checkPostingAiDefaults", "checkPostingAiLabel", "normalizeCheckPostingProviderId", "normalizeCheckPostingAiUrl",
     "validatePlayPostingDelayRange", "getCheckPostingConfig", "saveCheckPostingConfig", "randomDelayMs",
     "getPlayPostingBatchState", "updatePlayPostingBatchState", "finishPlayPostingBatch",
     "cancelPlayPostingBatch", "startPlayPostingBatch", "runPlayPostingBatchStep",
-    "restorePlayPostingBatch"
+    "restorePlayPostingBatch", "preparePlayPostingJobright", "claimPlayPostingJobright",
+    "stopPlayPostingJobright", "handlePlayPostingJobrightConnection"
   ], context);
   const runStep = context.runPlayPostingBatchStep;
   context.runPlayPostingBatchStep = (...args) => {
@@ -474,9 +476,150 @@ function batchFixture(tabCount = 1) {
       await alarmStep;
     },
     setSession: (state) => { session.playPostingBatch = structuredClone(state); },
-    setConfig: (config) => { local.checkPostingConfig = config; }
+    setConfig: (config) => { local.checkPostingConfig = config; },
+    setJobrightCount: (count) => { local.jobrightConfig = { openCount: count }; }
   };
 }
+
+test("Double Play checks every available tab despite the single Play limit, then hands off once", async () => {
+  const { context, tabs, calls, state, advance, alarms, setJobrightCount } = batchFixture(1);
+  setJobrightCount(10);
+  tabs.push(
+    { id: 7, windowId: 9, index: 20, groupId: -1, pinned: true, url: "https://jobright.ai/jobs/recommend" },
+    { id: 8, windowId: 9, index: 21, groupId: -1, url: "https://docs.google.com/spreadsheets/d/sheet/edit" },
+    { id: 9, windowId: 9, index: 22, groupId: -1, url: "chrome://extensions" },
+    { id: 10, windowId: 9, index: 23, groupId: -1, url: "https://chat.deepseek.com/" }
+  );
+  await context.startPlayPostingBatch("all", { ownerTabId: 1, allTabs: true });
+  assert.equal(state().tabCount, 2);
+  assert.equal(state().jobrightCount, 10);
+  assert.equal(state().phase, "waiting");
+  assert.deepEqual(calls.sent.map(call => call.text), ["https://jobs.example/last"]);
+  setJobrightCount(25); // A running batch keeps the count captured when clicked.
+  tabs.push({ id: 11, windowId: 9, index: 30, groupId: -1, url: "https://jobs.example/added-later" });
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.deepEqual(calls.sent.map(call => call.text), ["https://jobs.example/last", "https://jobs.example/first"]);
+  assert.equal(state().phase, "jobright-ready");
+  assert.equal(state().jobrightTabId, 7);
+  assert.equal(state().jobrightCount, 10);
+  assert.equal(calls.focused.at(-1), 7);
+  assert.equal(alarms.size, 0);
+  await context.restorePlayPostingBatch();
+  await context.runPlayPostingBatchStep();
+  assert.equal(calls.sent.length, 2);
+  assert.equal(await context.claimPlayPostingJobright("all", 10, "wrong-window"), null);
+  const claims = await Promise.all([
+    context.claimPlayPostingJobright("all", 9, "panel-one"),
+    context.claimPlayPostingJobright("all", 9, "panel-two")
+  ]);
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(state().phase, "jobright-running");
+});
+
+test("Double Play retries a busy final posting before opening Jobright", async () => {
+  const { context, tabs, calls, state, advance } = batchFixture();
+  tabs.splice(1, 1); // One available job.
+  tabs.push({ id: 7, windowId: 9, index: 20, groupId: -1, url: "https://jobright.ai/jobs/recommend" });
+  let busy = true;
+  context.sendFillAndSendToTab = async (tabId, text) => {
+    calls.sent.push({ tabId, text });
+    return { submitted: !busy };
+  };
+  await context.startPlayPostingBatch("all-busy", { ownerTabId: 1, allTabs: true });
+  assert.equal(state().phase, "waiting");
+  assert.equal(state().completedCount, 0);
+  assert.equal(state().pendingJob.id, 3);
+  busy = false;
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.equal(calls.sent[0].text, calls.sent[1].text);
+  assert.equal(state().phase, "jobright-ready");
+  assert.equal(state().completedCount, 1);
+});
+
+test("Double Play opens Recommendations in the same window when no postings or Jobright remain", async () => {
+  const { context, tabs, state, calls } = batchFixture();
+  tabs.forEach(tab => { if (tab.id !== 1) tab.pinned = true; });
+  const created = [];
+  context.chrome.tabs.create = async options => {
+    created.push({ ...options });
+    return { id: 7, ...options };
+  };
+  await context.startPlayPostingBatch("empty-all", { ownerTabId: 1, allTabs: true });
+  assert.equal(calls.sent.length, 0);
+  assert.deepEqual(created, [{ windowId: 9, url: "https://jobright.ai/jobs/recommend", active: false }]);
+  assert.equal(state().jobrightCount, 3);
+  assert.equal(state().jobrightTabId, 7);
+  assert.equal(state().phase, "jobright-ready");
+});
+
+test("Double Play opens the selected AI from a job tab and continues checking automatically", async () => {
+  const { context, state, calls, advance, tabs } = batchFixture(1);
+  context.makeOrOpenCheckPostingAiTab = async (_runId, options) => {
+    calls.openedAi = { ...options };
+    return { tabId: 1 };
+  };
+  tabs.push({ id: 7, windowId: 9, index: 20, groupId: -1, url: "https://jobright.ai/jobs/recommend" });
+  await context.startPlayPostingBatch("from-job", { ownerTabId: 2, allTabs: true });
+  assert.deepEqual(calls.openedAi, { ownerTabId: 2, sameWindowOnly: true });
+  assert.equal(state().ownerTabId, 1);
+  assert.equal(calls.sent.length, 1);
+  advance();
+  await context.runPlayPostingBatchStep();
+  assert.equal(state().phase, "jobright-ready");
+});
+
+test("stopping Double Play during its final submission prevents the Jobright handoff", async () => {
+  const { context, tabs, state, calls } = batchFixture();
+  tabs.splice(1, 1);
+  let complete;
+  context.sendFillAndSendToTab = () => new Promise(resolve => { complete = resolve; });
+  const running = context.startPlayPostingBatch("stop-all", { ownerTabId: 1, allTabs: true });
+  while (!complete) await new Promise(resolve => setImmediate(resolve));
+  await context.cancelPlayPostingBatch("stop", { ownerTabId: 1 });
+  complete({ submitted: true });
+  await running;
+  assert.equal(state(), null);
+  assert.ok(!calls.focused.includes(7));
+});
+
+test("Double Play stops on posting failure and preserves a deferred Jobright handoff across restoration", async () => {
+  const { context, state, setSession, calls } = batchFixture();
+  context.sendFillAndSendToTab = async () => { throw new Error("Send failed"); };
+  await assert.rejects(context.startPlayPostingBatch("failed-all", { ownerTabId: 1, allTabs: true }), /Send failed/);
+  assert.equal(state(), null);
+  setSession({ runId: "deferred", ownerTabId: 1, windowId: 9, allTabs: true,
+    completedCount: 2, tabCount: 2, jobrightCount: 5, phase: "jobright-preparing" });
+  context.chrome.tabs.create = async options => ({ id: 7, ...options });
+  await context.restorePlayPostingBatch();
+  assert.equal(state().phase, "jobright-ready");
+  await context.restorePlayPostingBatch();
+  assert.equal(state().phase, "jobright-ready");
+  assert.equal(calls.sent.length, 0);
+});
+
+test("Double Play stops when its AI moves windows and does not advance to Jobright", async () => {
+  const { context, tabs, state, advance } = batchFixture();
+  await context.startPlayPostingBatch("moved-all", { ownerTabId: 1, allTabs: true });
+  tabs[0].windowId = 10;
+  advance();
+  await assert.rejects(context.runPlayPostingBatchStep(), /AI chat moved to another window/);
+  assert.equal(state(), null);
+});
+
+test("an interrupted automatic Jobright run is stopped without replaying applications", async () => {
+  const { context, setSession, state, calls } = batchFixture();
+  const scripts = [];
+  context.chrome.scripting = { executeScript: async options => scripts.push(options) };
+  setSession({ runId: 'interrupted', ownerTabId: 1, allTabs: true, phase: 'jobright-running',
+    jobrightTabId: 7, jobrightRunId: 'jobright-run' });
+  await context.restorePlayPostingBatch();
+  assert.equal(state(), null);
+  assert.equal(scripts[0].target.tabId, 7);
+  assert.equal(scripts[0].args[0], 'jobright-run');
+  assert.equal(calls.sent.length, 0);
+});
 
 test("the main Check posting action appends exactly one tab to the entire group", async () => {
   const base = batchFixture(5);
@@ -569,6 +712,7 @@ function mainButtonPanelFixture({ ai = true, sendMessage } = {}) {
       return sendMessage ? sendMessage(message) : { ok: true };
     } } }
   });
+  context.updateDoublePlayButtonDisabledState = () => {};
   load(panel, ["updatePlayButtonDisabledState", "updateCheckPostingButtonDisabledState",
     "makeOrOpenSelectedAiTab", "checkCurrentPosting", "playRightmostPosting"], context);
   context.updateCheckPostingButtonDisabledState();

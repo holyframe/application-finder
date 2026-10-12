@@ -204,6 +204,7 @@ function panelFixture(sendMessage = async () => ({ ok: true })) {
     isMakeOrOpenAiTabRunning: false, isJobrightOpening: false, jobrightOpenRun: null, isTabGroupCleanupRunning: false,
     playPostingBatchState: null, isCurrentTabGoogleSheet: false, isCurrentTabJobright: true,
     isCurrentTabPlayAiChat: false,
+    updateDoublePlayButtonDisabledState() {},
     saveButton: button(), checkPostingButton: button(), playButton: button(),
     openJobrightJobsButton: button(), jobrightPlayButton: button(),
     checkPostingDeleteButton: button(), jobrightDeleteButton: button(),

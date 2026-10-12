@@ -3272,6 +3272,16 @@ function selectRightmostUngroupedPostingTab(tabs, aiTab) {
   ).sort((left, right) => right.index - left.index)[0] || null;
 }
 
+function getAvailablePostingTabs(tabs, aiTab) {
+  return (tabs || []).filter((tab) =>
+    Number.isInteger(tab?.id) && Number.isInteger(tab.index) &&
+    tab.windowId === aiTab.windowId && tab.id !== aiTab.id &&
+    !tab.pinned && !isTabInGroup(tab) && /^https?:\/\//i.test(tab.url || "") &&
+    !getPostingAiProviderId(tab.url) && !isGoogleSheetsDocumentUrl(tab.url) &&
+    !isJobrightUrl(tab.url)
+  ).sort((left, right) => right.index - left.index);
+}
+
 async function playRightmostPostingToAi(runId, options = {}) {
   const actionLabel = options.actionLabel || "Play";
   const ownerTabId = Number.isInteger(options.ownerTabId)
@@ -3395,20 +3405,40 @@ async function startPlayPostingBatch(runId, options = {}) {
     if (await getPlayPostingBatchState()) {
       throw new Error("Play is already running. Stop it from its AI chat tab first.");
     }
-    const ownerTabId = Number.isInteger(options.ownerTabId)
+    let ownerTabId = Number.isInteger(options.ownerTabId)
       ? options.ownerTabId : getRunOwnerTabId(runId);
-    const aiTab = await chrome.tabs.get(ownerTabId);
+    let aiTab = await chrome.tabs.get(ownerTabId);
+    if (options.allTabs && (!getPostingAiProviderId(aiTab.url) || aiTab.pinned)) {
+      const opened = await makeOrOpenCheckPostingAiTab(runId, { ownerTabId, sameWindowOnly: true });
+      ownerTabId = opened.tabId;
+      aiTab = await chrome.tabs.get(ownerTabId);
+    }
     const providerId = getPostingAiProviderId(aiTab.url);
     if (!providerId || aiTab.pinned) {
       throw new Error("Play is available on an unpinned AI chat tab.");
     }
     const { playTabCount, playDelayMinSeconds, playDelayMaxSeconds } = await getCheckPostingConfig();
+    let allTabsState = {};
+    if (options.allTabs) {
+      const availableTabs = getAvailablePostingTabs(
+        await chrome.tabs.query({ windowId: aiTab.windowId }), aiTab);
+      const { jobrightConfig } = await chrome.storage.local.get("jobrightConfig");
+      const openCount = jobrightConfig?.openCount;
+      allTabsState = {
+        allTabs: true, windowId: aiTab.windowId,
+        remainingJobs: availableTabs.map(({ id, url }) => ({ id, url })),
+        tabCount: availableTabs.length,
+        jobrightCount: Number.isSafeInteger(openCount) && openCount >= 1 && openCount <= 150
+          ? openCount : 3
+      };
+      registerRunOwnerTab(runId, ownerTabId);
+    }
     await updatePlayPostingBatchState(() => ({
       runId, ownerTabId, providerId, aiUrl: aiTab.url,
       allowNewConversation: new URL(aiTab.url).pathname === "/",
       tabCount: playTabCount, completedCount: 0, pendingJob: null,
       playDelayMinSeconds, playDelayMaxSeconds,
-      phase: "ready", nextRunAt: null
+      phase: "ready", nextRunAt: null, ...allTabsState
     }));
     return await runPlayPostingBatchStep();
   } finally {
@@ -3423,6 +3453,10 @@ async function runPlayPostingBatchStep() {
   try {
     state = await getPlayPostingBatchState();
     if (!state) return { active: false };
+    if (state.phase.startsWith("jobright-")) {
+      if (state.phase === "jobright-preparing") await preparePlayPostingJobright(state);
+      return { active: true, completedCount: state.completedCount };
+    }
     if (state.nextRunAt && Date.now() < state.nextRunAt) {
       // An early alarm must leave another wake-up at the saved deadline.
       const waitingState = await updatePlayPostingBatchState((current) => current);
@@ -3430,6 +3464,9 @@ async function runPlayPostingBatchStep() {
     }
     registerRunOwnerTab(state.runId, state.ownerTabId);
     const aiTab = await chrome.tabs.get(state.ownerTabId);
+    if (state.allTabs && aiTab.windowId !== state.windowId) {
+      throw new Error("The AI chat moved to another window. Double Play stopped before submitting another URL.");
+    }
     if (aiTab.pinned || getPostingAiProviderId(aiTab.url) !== state.providerId) {
       throw new Error("The AI chat tab is no longer available for Play.");
     }
@@ -3442,13 +3479,23 @@ async function runPlayPostingBatchStep() {
     }
 
     const retry = Boolean(state.pendingJob);
+    const windowTabs = retry ? [] : await chrome.tabs.query({ windowId: aiTab.windowId });
     const jobTab = retry ? await chrome.tabs.get(state.pendingJob.id)
-      : selectRightmostUngroupedPostingTab(
-        await chrome.tabs.query({ windowId: aiTab.windowId }), aiTab);
+      : state.allTabs
+        ? getAvailablePostingTabs(windowTabs, aiTab).find((tab) =>
+          state.remainingJobs.some((job) => job.id === tab.id))
+        : selectRightmostUngroupedPostingTab(windowTabs, aiTab);
     if (!jobTab) {
+      if (state.allTabs) {
+        await preparePlayPostingJobright(state);
+        return { active: true, completedCount: state.completedCount };
+      }
       await finishPlayPostingBatch(state.runId,
         `Play finished after ${state.completedCount} URLs: no other ungrouped, unpinned tabs remain.`);
       return { active: false, completedCount: state.completedCount };
+    }
+    if (state.allTabs && jobTab.url !== state.remainingJobs.find((job) => job.id === jobTab.id)?.url) {
+      throw new Error("An available posting tab changed its URL. Double Play stopped before submitting it.");
     }
     if (retry && (jobTab.url !== state.pendingJob.url || jobTab.pinned || jobTab.windowId !== aiTab.windowId)) {
       throw new Error("The pending job tab changed or moved. Play stopped before sending another URL.");
@@ -3466,6 +3513,10 @@ async function runPlayPostingBatchStep() {
     });
     const completedCount = state.completedCount + (result.submitted ? 1 : 0);
     if (completedCount >= state.tabCount) {
+      if (state.allTabs) {
+        await preparePlayPostingJobright({ ...state, completedCount });
+        return { ...result, active: true, completedCount };
+      }
       await finishPlayPostingBatch(state.runId,
         `Play completed: ${completedCount} of ${state.tabCount} URLs sent.`, "success");
       return { ...result, active: false, completedCount };
@@ -3476,6 +3527,9 @@ async function runPlayPostingBatchStep() {
     const nextState = await updatePlayPostingBatchState((current) =>
       current?.runId === state.runId ? {
         ...current, completedCount, phase: "waiting",
+        ...(state.allTabs && result.submitted ? {
+          remainingJobs: current.remainingJobs.filter((job) => job.id !== jobTab.id)
+        } : {}),
         pendingJob: result.submitted ? null : current.pendingJob,
         nextRunAt: Date.now() + delayMs
       } : current);
@@ -3497,7 +3551,13 @@ async function runPlayPostingBatchStep() {
 async function restorePlayPostingBatch() {
   const state = await getPlayPostingBatchState();
   if (!state || playPostingBatchStarting || playPostingBatchStepRunning) return;
-  if (state.phase === "sending") {
+  if (state.phase === "jobright-running") {
+    await stopPlayPostingJobright(state,
+      "Double Play stopped after Chrome interrupted Open Jobright. Kept application tabs already opened.");
+  } else if (state.phase === "jobright-ready") {
+    // The panel claims this handoff when it is open in the original window.
+    return;
+  } else if (state.phase === "sending") {
     await finishPlayPostingBatch(state.runId,
       "Play stopped after Chrome interrupted a submission. Check the chat before restarting Play.", "warning");
   } else if (state.phase === "waiting" && state.nextRunAt > Date.now()) {
@@ -3506,6 +3566,89 @@ async function restorePlayPostingBatch() {
     await runPlayPostingBatchStep();
   }
 }
+
+async function preparePlayPostingJobright(state) {
+  const preparing = await updatePlayPostingBatchState((current) =>
+    current?.runId === state.runId ? {
+      ...current, completedCount: state.completedCount,
+      phase: "jobright-preparing", pendingJob: null, nextRunAt: null
+    } : current);
+  if (preparing?.runId !== state.runId) return;
+  const tabs = await chrome.tabs.query({ windowId: state.windowId });
+  const jobrightTab = tabs.find((tab) => isJobrightRecommendationsUrl(tab.url)) ||
+    await chrome.tabs.create({ windowId: state.windowId,
+      url: "https://jobright.ai/jobs/recommend", active: false });
+  const ready = await updatePlayPostingBatchState((current) =>
+    current?.runId === state.runId ? {
+      ...current, phase: "jobright-ready", jobrightTabId: jobrightTab.id
+    } : current);
+  if (ready?.runId !== state.runId) return;
+  await focusBrowserTab(jobrightTab.id);
+  await sendLog(state.runId, "success",
+    `Double Play checked ${state.completedCount} posting URLs. Opening ${state.jobrightCount} Jobright applications next.`);
+}
+
+async function claimPlayPostingJobright(runId, windowId, jobrightRunId) {
+  let claimed = null;
+  await updatePlayPostingBatchState((current) => {
+    if (current?.runId === runId && current.phase === "jobright-ready" && current.windowId === windowId) {
+      claimed = { ...current, phase: "jobright-running", jobrightRunId };
+    }
+    return claimed || current;
+  });
+  return claimed;
+}
+
+async function stopPlayPostingJobright(state, message) {
+  if (Number.isInteger(state.jobrightTabId) && state.jobrightRunId) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: state.jobrightTabId }, world: "MAIN",
+        func: (runId) => window.__applicationHelperJobright?.stopOpenRun?.(runId),
+        args: [state.jobrightRunId]
+      });
+    } catch (_error) {
+      // The tab may have closed; the helper also expires capture on its own.
+    }
+  }
+  await finishPlayPostingBatch(state.runId, message, "warning");
+}
+
+function handlePlayPostingJobrightConnection(port) {
+  if (port.name !== "play-posting-jobright") return;
+  let claimedState = null;
+  let disconnected = false;
+  let claiming = false;
+  port.onMessage.addListener(async (message) => {
+    try {
+      if (message.type === "claim" && !claiming) {
+        claiming = true;
+        claimedState = await claimPlayPostingJobright(message.runId, message.windowId, message.jobrightRunId);
+        if (disconnected) {
+          if (claimedState) await stopPlayPostingJobright(claimedState,
+            "Double Play stopped because its side panel closed. Kept application tabs already opened.");
+          return;
+        }
+        port.postMessage({ ok: Boolean(claimedState), state: claimedState });
+      } else if (message.type === "finished" && claimedState) {
+        await finishPlayPostingBatch(claimedState.runId,
+          "Double Play finished its Jobright process.");
+        claimedState = null;
+        if (!disconnected) port.postMessage({ finished: true });
+        port.disconnect();
+      }
+    } catch (error) {
+      if (!disconnected) port.postMessage({ ok: false, error: error.message });
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    disconnected = true;
+    if (claimedState) stopPlayPostingJobright(claimedState,
+      "Double Play stopped because its side panel closed. Kept application tabs already opened.").catch(console.error);
+  });
+}
+
+chrome.runtime.onConnect.addListener(handlePlayPostingJobrightConnection);
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === PLAY_POSTING_ALARM_NAME) {
@@ -3655,7 +3798,8 @@ async function makeOrOpenCheckPostingAiTab(runId, options = {}) {
   const provider = getAiProviderConfig(checkPostingConfig.providerId);
   const destinationUrl = checkPostingConfig.url;
   const openTabs = await chrome.tabs.query({});
-  let aiTab = selectCheckPostingAiTab(openTabs, destinationUrl, windowId);
+  let aiTab = selectCheckPostingAiTab(options.sameWindowOnly
+    ? openTabs.filter((tab) => tab.windowId === windowId) : openTabs, destinationUrl, windowId);
   let openedNewTab = false;
 
   if (!aiTab) {
@@ -4950,6 +5094,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     READ_GOOGLE_DOC_TEXT: readGoogleDocText,
     CHECK_POSTING_TO_COPILOT: checkPostingOnce,
     PLAY_RIGHTMOST_POSTING_TO_AI: startPlayPostingBatch,
+    PLAY_ALL_POSTINGS_THEN_JOBRIGHT: startPlayPostingBatch,
     CANCEL_PLAY_POSTING_BATCH: cancelPlayPostingBatch,
     MAKE_OR_OPEN_CHECK_POSTING_AI_TAB: makeOrOpenCheckPostingAiTab,
     CLEANUP_ACTION_TAB_GROUP: cleanupActionTabGroup,
@@ -4993,9 +5138,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           })
         : message.type === "CHECK_POSTING_TO_COPILOT" ||
           message.type === "PLAY_RIGHTMOST_POSTING_TO_AI" ||
+          message.type === "PLAY_ALL_POSTINGS_THEN_JOBRIGHT" ||
           message.type === "CANCEL_PLAY_POSTING_BATCH"
           ? run(message.runId, {
-              ownerTabId: message.ownerTabId
+              ownerTabId: message.ownerTabId,
+              allTabs: message.type === "PLAY_ALL_POSTINGS_THEN_JOBRIGHT"
             })
         : message.type === "CLEANUP_ACTION_TAB_GROUP"
           ? run(message.runId, {

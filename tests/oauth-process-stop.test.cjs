@@ -33,6 +33,7 @@ function fixture() {
     setSaveButtonsDisabled: (disabled) => { context.areActionButtonsDisabled = disabled; },
     renderSavePostProcessControls: () => events.push("process-state-updated"),
     schedulePersistTabSession() {},
+    continuePlayPostingJobright: async () => {},
     clearStatus() {}, clearDeletedRows() {}, clearLogsForTab() {},
     validateSaveCurrentTabInputs: () => ({ ok: true }),
     validateActiveBrowserTabForAppAction: async () => ({ ok: true, tabId: 7 }),
