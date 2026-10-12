@@ -483,7 +483,7 @@ function batchFixture(tabCount = 1) {
 
 test("Double Play checks every available tab despite the single Play limit, then hands off once", async () => {
   const { context, tabs, calls, state, advance, alarms, setJobrightCount } = batchFixture(1);
-  setJobrightCount(10);
+  setJobrightCount(300);
   tabs.push(
     { id: 7, windowId: 9, index: 20, groupId: -1, pinned: true, url: "https://jobright.ai/jobs/recommend" },
     { id: 8, windowId: 9, index: 21, groupId: -1, url: "https://docs.google.com/spreadsheets/d/sheet/edit" },
@@ -492,7 +492,7 @@ test("Double Play checks every available tab despite the single Play limit, then
   );
   await context.startPlayPostingBatch("all", { ownerTabId: 1, allTabs: true });
   assert.equal(state().tabCount, 2);
-  assert.equal(state().jobrightCount, 10);
+  assert.equal(state().jobrightCount, 300);
   assert.equal(state().phase, "waiting");
   assert.deepEqual(calls.sent.map(call => call.text), ["https://jobs.example/last"]);
   setJobrightCount(25); // A running batch keeps the count captured when clicked.
@@ -502,7 +502,7 @@ test("Double Play checks every available tab despite the single Play limit, then
   assert.deepEqual(calls.sent.map(call => call.text), ["https://jobs.example/last", "https://jobs.example/first"]);
   assert.equal(state().phase, "jobright-ready");
   assert.equal(state().jobrightTabId, 7);
-  assert.equal(state().jobrightCount, 10);
+  assert.equal(state().jobrightCount, 300);
   assert.equal(calls.focused.at(-1), 7);
   assert.equal(alarms.size, 0);
   await context.restorePlayPostingBatch();

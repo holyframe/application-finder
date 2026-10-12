@@ -90,13 +90,16 @@ function fixture() {
 }
 
 test("double-play starts the entire workflow from the clicked tab and saves Jobright's count", async () => {
-  const { context, calls, local } = fixture();
-  await context.playAllPostingsThenJobright();
-  assert.deepEqual(calls.messages, [{ type: "PLAY_ALL_POSTINGS_THEN_JOBRIGHT", runId: "double-run", ownerTabId: 1 }]);
-  assert.equal(local.jobrightConfig.openCount, 5);
-  context.jobrightOpenCountInput.value = "3";
-  await context.loadJobrightSettings();
-  assert.equal(context.jobrightOpenCountInput.value, "5");
+  for (const count of [5, 25, 75, 125, 300]) {
+    const { context, calls, local } = fixture();
+    context.jobrightOpenCountInput.value = String(count);
+    await context.playAllPostingsThenJobright();
+    assert.deepEqual(calls.messages, [{ type: "PLAY_ALL_POSTINGS_THEN_JOBRIGHT", runId: "double-run", ownerTabId: 1 }]);
+    assert.equal(local.jobrightConfig.openCount, count);
+    context.jobrightOpenCountInput.value = "3";
+    await context.loadJobrightSettings();
+    assert.equal(context.jobrightOpenCountInput.value, String(count));
+  }
 });
 
 test("double-play Stop cancels checks from any tab in the original window", async () => {

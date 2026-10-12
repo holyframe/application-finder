@@ -189,16 +189,18 @@ test("both Jobright start buttons complete normally, restore Play, and can run a
 });
 
 test("automatic Jobright runs use the captured tab and count even if the panel is on another tab", async () => {
-  const { context, calls } = panelFixture();
-  context.activeTabId = 99;
-  context.openJobrightJobsButton.disabled = true;
-  context.waitForJobrightOpenDelay = async () => {};
-  await context.openJobrightJobs({ ownerTabId: 8, count: 5, runId: "automatic-run" });
-  assert.equal(calls.created.length, 5);
-  assert.equal(calls.scripts.filter(call => call.name === "markJobrightApplicationAlreadyApplied").length, 5);
-  assert.ok(calls.scripts.every(call => call.tabId === 8));
-  assert.ok(calls.scripts.filter(call => call.name === "startJobrightOpenRun").every(call => call.args[0] === "automatic-run"));
-  assert.equal(calls.scripts[0].name, "content/jobright.js");
+  for (const count of [5, 25, 75, 125, 300]) {
+    const { context, calls } = panelFixture();
+    context.activeTabId = 99;
+    context.openJobrightJobsButton.disabled = true;
+    context.waitForJobrightOpenDelay = async () => {};
+    await context.openJobrightJobs({ ownerTabId: 8, count, runId: "automatic-run" });
+    assert.equal(calls.created.length, count);
+    assert.equal(calls.scripts.filter(call => call.name === "markJobrightApplicationAlreadyApplied").length, count);
+    assert.ok(calls.scripts.every(call => call.tabId === 8));
+    assert.ok(calls.scripts.filter(call => call.name === "startJobrightOpenRun").every(call => call.args[0] === "automatic-run"));
+    assert.equal(calls.scripts[0].name, "content/jobright.js");
+  }
 });
 
 test("a helper startup error restores Play and the main button", async () => {

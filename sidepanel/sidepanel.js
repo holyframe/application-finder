@@ -6827,7 +6827,7 @@ function renderSaveWorkspaceSidePanelView({ focus = false } = {}) {
 function normalizeJobrightOpenCount() {
   const parsedCount = Number.parseInt(jobrightOpenCountInput?.value || "", 10);
   const count = Number.isFinite(parsedCount)
-    ? Math.min(150, Math.max(1, parsedCount))
+    ? Math.min(300, Math.max(1, parsedCount))
     : 3;
 
   if (jobrightOpenCountInput) {
@@ -6841,7 +6841,7 @@ async function loadJobrightSettings() {
   const { jobrightConfig } = await chrome.storage.local.get("jobrightConfig");
   const count = jobrightConfig?.openCount;
   if (jobrightOpenCountInput) {
-    jobrightOpenCountInput.value = String(Number.isSafeInteger(count) && count >= 1 && count <= 150 ? count : 3);
+    jobrightOpenCountInput.value = String(Number.isSafeInteger(count) && count >= 1 && count <= 300 ? count : 3);
   }
 }
 
@@ -7151,7 +7151,7 @@ async function openJobrightJobs(options = {}) {
     return;
   }
 
-  const count = automatic ? Math.min(150, Math.max(1, options.count)) : normalizeJobrightOpenCount();
+  const count = automatic ? Math.min(300, Math.max(1, options.count)) : normalizeJobrightOpenCount();
   const ownerTabId = automatic ? options.ownerTabId : activeTabId;
   const processedJobIds = [];
   const openedJobs = [];

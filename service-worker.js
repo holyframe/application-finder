@@ -3428,7 +3428,7 @@ async function startPlayPostingBatch(runId, options = {}) {
         allTabs: true, windowId: aiTab.windowId,
         remainingJobs: availableTabs.map(({ id, url }) => ({ id, url })),
         tabCount: availableTabs.length,
-        jobrightCount: Number.isSafeInteger(openCount) && openCount >= 1 && openCount <= 150
+        jobrightCount: Number.isSafeInteger(openCount) && openCount >= 1 && openCount <= 300
           ? openCount : 3
       };
       registerRunOwnerTab(runId, ownerTabId);
