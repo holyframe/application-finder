@@ -62,8 +62,6 @@ After a profile is saved, its progress area shows matching `Sheet ↗`
 and `Delete` actions. The Sheet action opens that profile's exact tab in a new,
 focused Chrome window. Confirming Delete removes only the matching Google Sheet
 row and keeps the copied resume document.
-The main action card also has an `Open Google Sheet` button outside the profile
-list. It opens the currently configured workbook in a new, focused Chrome window.
 Outside an AI chat, the `Check posting` main button opens the selected AI chat,
 or creates it if needed, moves its entire `Check with AI` group to the right end
 of that Chrome window, and focuses the AI tab without submitting a posting.

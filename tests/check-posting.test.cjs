@@ -51,15 +51,13 @@ function workerHelpers() {
 test("Check posting opens the selected chat or checks one rightmost tab", () => {
   const checkIndex = html.indexOf('id="checkPostingButton"');
   const settingsIndex = html.indexOf('id="checkPostingOptionsButton"');
-  const sheetIndex = html.indexOf('id="openGoogleSheetButton"');
   const profilesIndex = html.indexOf('<section class="card profile-picker-card">');
   assert.ok(checkIndex > 0 && checkIndex < settingsIndex);
-  assert.ok(settingsIndex > 0 && settingsIndex < sheetIndex);
-  assert.ok(sheetIndex < profilesIndex);
+  assert.ok(settingsIndex > 0 && settingsIndex < profilesIndex);
   assert.match(html, />Check posting</);
   assert.doesNotMatch(html, /id="makeOrOpenAiTabButton"/);
   assert.ok(settingsIndex < html.indexOf('id="playButton"'));
-  assert.ok(html.indexOf('id="playButton"') < sheetIndex);
+  assert.ok(html.indexOf('id="playButton"') < profilesIndex);
   assert.match(html, /aria-label="Check posting settings"/);
   assert.match(html, /id="checkPostingActionSettingsModal"/);
   assert.match(html, /id="checkPostingUrl-copilot"/);

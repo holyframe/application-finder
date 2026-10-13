@@ -1,7 +1,6 @@
 const saveButton = document.querySelector("#saveButton");
 const saveResultToast = document.querySelector("#saveResultToast");
 const saveOptionsButton = document.querySelector("#saveOptionsButton");
-const openGoogleSheetButton = document.querySelector("#openGoogleSheetButton");
 const checkPostingButton = document.querySelector("#checkPostingButton");
 const playButton = document.querySelector("#playButton");
 const doublePlayButton = document.querySelector("#doublePlayButton");
@@ -2633,36 +2632,6 @@ async function openNoModelProfileGoogleSheet(sheetUrl) {
     type: "normal",
     focused: true
   });
-}
-
-function buildConfiguredGoogleSheetUrl(spreadsheetIdInput) {
-  const rawValue = String(spreadsheetIdInput || "").trim();
-  const urlMatch = rawValue.match(
-    /\/spreadsheets\/(?:u\/\d+\/)?d\/([a-zA-Z0-9-_]+)/
-  );
-  const spreadsheetId = urlMatch ? urlMatch[1] : rawValue;
-  if (!/^[a-zA-Z0-9-_]+$/.test(spreadsheetId)) {
-    throw new Error("A valid Google Sheet ID is required in Save settings.");
-  }
-  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-}
-
-async function openConfiguredGoogleSheet() {
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: "GET_SHEET_CONFIG"
-    });
-    if (!response?.ok) {
-      throw new Error(response?.error || "Could not load Google Sheet settings.");
-    }
-
-    const sheetUrl = buildConfiguredGoogleSheetUrl(response.spreadsheetId);
-    await openNoModelProfileGoogleSheet(sheetUrl);
-    addLog("success", "Opened the configured Google Sheet in a new Chrome window.");
-  } catch (error) {
-    console.error("Could not open the configured Google Sheet:", error);
-    addLog("error", error.message || "Could not open the configured Google Sheet.");
-  }
 }
 
 function applyCheckPostingSettings(config = {}) {
@@ -8571,7 +8540,6 @@ configModalCancelButton?.addEventListener("click", () => setConfigModalOpen(fals
 
 saveConfigButton?.addEventListener("click", saveSheetConfig);
 aiProviderInput?.addEventListener("change", syncSaveModeUi);
-openGoogleSheetButton?.addEventListener("click", openConfiguredGoogleSheet);
 checkPostingButton?.addEventListener("click", checkCurrentPosting);
 playButton?.addEventListener("click", playRightmostPosting);
 doublePlayButton?.addEventListener("click", playAllPostingsThenJobright);

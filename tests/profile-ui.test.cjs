@@ -235,22 +235,13 @@ function fixture() {
         message.promptResumes, message.selectedPromptResumeId, message.profileId
       ) };
     }
-    if (message.type === "GET_SHEET_CONFIG") {
-      return {
-        ok: true,
-        spreadsheetId: "global-sheet",
-        sheetName: "Sheet1",
-        aiProviderId: "none"
-      };
-    }
     throw new Error("Unexpected test message: " + message.type);
     } }
   };
   const names = [
     "getSelectedAiProviderId", "isNoModelSaveMode",
     "isGoogleSheetsDocumentUrl", "requestDeleteNoModelProfileApplication",
-    "openNoModelProfileGoogleSheet", "buildConfiguredGoogleSheetUrl",
-    "openConfiguredGoogleSheet", "createNoModelProfileProgress",
+    "openNoModelProfileGoogleSheet", "createNoModelProfileProgress",
     "renderNoModelSaveProgress",
     "normalizePromptResumeEntry", "enforceSingleAutoSelectPromptResume",
     "getAutoSelectedPromptResumeId", "normalizePromptResumeSelection",
@@ -300,25 +291,6 @@ test("No Model allows selecting a profile without prompt resumes and persists it
   await ctx.toggleProfileSelection("empty");
   assert.ok(stored().selectedProfileIds.includes("empty"));
   assert.equal(stored().profiles.find((profile) => profile.id === "empty").selectedPromptResumeId, "");
-});
-
-test("global Open Google Sheet sits outside Profiles and opens the configured workbook in a new window", async () => {
-  const buttonIndex = html.indexOf('id="openGoogleSheetButton"');
-  const checkPostingIndex = html.indexOf('id="checkPostingButton"');
-  const profilesIndex = html.indexOf('<section class="card profile-picker-card">');
-  assert.ok(buttonIndex > 0 && buttonIndex < profilesIndex);
-  assert.ok(checkPostingIndex > 0 && checkPostingIndex < profilesIndex);
-  assert.ok(checkPostingIndex < buttonIndex);
-
-  const { ctx, openedWindows } = fixture();
-  await ctx.openConfiguredGoogleSheet();
-  assert.deepEqual(JSON.parse(JSON.stringify(openedWindows)), [
-    {
-      url: "https://docs.google.com/spreadsheets/d/global-sheet/edit",
-      type: "normal",
-      focused: true
-    }
-  ]);
 });
 
 test("clicking the profile label area selects and deselects the profile", async () => {
