@@ -1183,32 +1183,12 @@ h1 {
   padding: 4px 0;
 }
 
-.profile-auto-select {
-  min-height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 8px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.profile-auto-select.is-active {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: rgba(84, 87, 255, 0.1);
-}
-
-.profile-auto-select:disabled,
 .profile-resume-settings:disabled {
   cursor: not-allowed;
   opacity: 0.35;
 }
 
-.profile-resume-settings:focus-visible,
-.profile-auto-select:focus-visible {
+.profile-resume-settings:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }

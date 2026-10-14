@@ -17,12 +17,12 @@ It combines:
 Before saving an application, check one or more profiles and choose one resume
 variant for each. Manual profile checks belong to the Chrome tab where they were
 made: a different tab starts unchecked, and returning to the original tab restores
-its checks. Profiles with Auto enabled are always checked on every tab. Choosing a
+its checks. Profiles previously saved with Auto enabled remain checked on every tab. Choosing a
 resume variant checks its profile automatically, while unchecking a profile keeps
 its assigned resume available for the next application. Then provide a base AI
 prompt and job description.
 
-Each profile row has Auto, Settings, and Remove controls. Settings contains the
+Each profile row has Settings and Remove controls. Settings contains the
 profile name and Google Docs resume template; click Save profile to apply those
 changes. Prompt resume variants are managed in the same dialog and save immediately.
 

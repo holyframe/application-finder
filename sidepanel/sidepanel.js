@@ -1660,20 +1660,6 @@ async function submitProfileSettingsForm() {
   }
 }
 
-async function toggleProfileAutoSelect(profileId) {
-  if (areActionButtonsDisabled) return;
-  const profile = profileSelectionState.profiles.find(
-    (entry) => entry.id === profileId
-  );
-  if (!profile) return;
-
-  const autoResume = profile.promptResumes.find((resume) => resume.autoSelect);
-  const promptResumeId = autoResume?.id || profile.selectedPromptResumeId;
-  if (!promptResumeId) return;
-
-  await setPromptResumeAutoSelect(profileId, promptResumeId, !autoResume);
-}
-
 function renderProfileList() {
   if (!profileList) return;
 
@@ -1835,25 +1821,6 @@ function renderProfileList() {
     const actions = document.createElement("div");
     actions.className = "profile-actions";
 
-    const autoButton = document.createElement("button");
-    autoButton.type = "button";
-    autoButton.className = "profile-auto-select";
-    autoButton.textContent = "Auto";
-    autoButton.classList.toggle("is-active", Boolean(autoResume));
-    autoButton.setAttribute("aria-pressed", String(Boolean(autoResume)));
-    autoButton.setAttribute("aria-label", `Auto-select prompt resume for ${profile.name}`);
-    autoButton.dataset.hasResume = String(
-      Boolean(autoResume || profile.selectedPromptResumeId)
-    );
-    autoButton.disabled =
-      areActionButtonsDisabled || autoButton.dataset.hasResume !== "true";
-    autoButton.title = autoResume
-      ? `Auto-select on: ${autoResume.label}`
-      : profile.selectedPromptResumeId
-        ? "Automatically select this profile's chosen resume after each save"
-        : "Choose a prompt resume in Settings first";
-    autoButton.addEventListener("click", () => toggleProfileAutoSelect(profile.id));
-
     const settingsButton = document.createElement("button");
     settingsButton.type = "button";
     settingsButton.className = "profile-resume-settings";
@@ -1887,7 +1854,7 @@ function renderProfileList() {
       removeProfile(profile.id);
     });
 
-    actions.append(autoButton, settingsButton, removeButton);
+    actions.append(settingsButton, removeButton);
     header.append(dragHandle, selectionCheckbox, copy, actions);
 
     item.append(header);
@@ -2494,7 +2461,7 @@ function setSaveButtonsDisabled(disabled) {
   if (addProfileButton) addProfileButton.disabled = disabled;
   profileList
     ?.querySelectorAll(
-      ".profile-resume-settings, .profile-auto-select, " +
+      ".profile-resume-settings, " +
       ".profile-selection-checkbox, .profile-selection-label"
     )
     .forEach((control) => {
@@ -2509,11 +2476,8 @@ function setSaveButtonsDisabled(disabled) {
         isProfileSelectionControl &&
         !isNoModelSaveMode() && !isSelectedProfileControl &&
         control.dataset.hasSelectedPromptResume !== "true";
-      const isUnavailableProfileAuto =
-        control.classList.contains("profile-auto-select") &&
-        control.dataset.hasResume !== "true";
       control.disabled =
-        disabled || isUnavailableProfileSelection || isUnavailableProfileAuto;
+        disabled || isUnavailableProfileSelection;
     });
   if (profileFormModalSubmitButton) profileFormModalSubmitButton.disabled = disabled;
   if (profileNotesModalSubmitButton) profileNotesModalSubmitButton.disabled = disabled;
@@ -3853,77 +3817,6 @@ async function selectPromptResume(promptResumeId) {
     console.error(error);
     const message = error.message || "Could not update selection.";
     addLog("error", message);
-    await loadProfileSelection();
-  }
-}
-
-async function setPromptResumeAutoSelect(profileId, promptResumeId, enabled) {
-  const profile = profileSelectionState.profiles.find(
-    (entry) => entry.id === profileId
-  );
-  if (!profile) {
-    return;
-  }
-
-  const promptResume = profile.promptResumes.find(
-    (entry) => entry.id === promptResumeId
-  );
-  if (!promptResume) {
-    addLog("error", "Could not find that prompt resume.");
-    return;
-  }
-
-  const promptResumes = enforceSingleAutoSelectPromptResume(
-    profile.promptResumes.map((entry) => ({
-      ...entry,
-      autoSelect: enabled ? entry.id === promptResumeId : false
-    }))
-  );
-
-  const selectedPromptResumeId = enabled
-    ? promptResumeId
-    : profile.selectedPromptResumeId || promptResumes[0]?.id || "";
-  const selectedIds = new Set(profileSelectionState.selectedProfileIds);
-  if (enabled) selectedIds.add(profileId);
-  else selectedIds.delete(profileId);
-
-  profileSelectionState.profiles = profileSelectionState.profiles.map(
-    (entry) =>
-      entry.id === profileId
-        ? {
-            ...entry,
-            promptResumes,
-            selectedPromptResumeId
-          }
-        : entry
-  );
-  profileSelectionState.selectedProfileIds = profileSelectionState.profiles
-    .filter((entry) => selectedIds.has(entry.id) && entry.selectedPromptResumeId)
-    .map((entry) => entry.id);
-  rememberCurrentManualProfileSelection();
-
-  if (profileSelectionState.selectedProfileId === profileId) {
-    promptResumeSelectionState = {
-      promptResumes,
-      selectedPromptResumeId
-    };
-  }
-
-  if (enabled && selectedPromptResumeId === promptResumeId) {
-    profileSelectionState.selectedProfileId = profileId;
-  }
-
-  try {
-    await persistProfileSelection(
-      enabled
-        ? `Auto-select enabled for "${promptResume.label}".`
-        : `Auto-select disabled for "${promptResume.label}". Profile deselected; its prompt resume remains assigned.`
-    );
-    renderPromptResumeList();
-    renderProfileList();
-  } catch (error) {
-    console.error(error);
-    addLog("error", error.message || "Could not update auto-select.");
     await loadProfileSelection();
   }
 }

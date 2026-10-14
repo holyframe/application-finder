@@ -140,7 +140,7 @@ class Element {
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
 
-function fixture() {
+function fixture({ autoProfileIds = [] } = {}) {
   let sequence = 0;
   const elements = new Map();
   for (const match of html.matchAll(/id="([^"]+)"/g)) {
@@ -167,6 +167,13 @@ function fixture() {
         selectedPromptResumeId: "", promptResumes: [] }
     ]
   };
+  for (const profile of data.profiles) {
+    if (autoProfileIds.includes(profile.id) && profile.promptResumes.length) {
+      profile.promptResumes[0].autoSelect = true;
+      profile.selectedPromptResumeId = profile.promptResumes[0].id;
+      data.selectedProfileIds.push(profile.id);
+    }
+  }
   const context = vm.createContext({
     ...Object.fromEntries(elements),
     document: { createElement: (tag) => new Element(tag) },
@@ -252,9 +259,9 @@ function fixture() {
     "applyPromptResumeStateToSelectedProfile", "renderProfileResumeSettings",
     "showProfileSettingsStatus", "submitProfileSettingsForm",
     "setProfileResumeSettingsModalOpen", "openProfileResumeSettingsModal",
-    "toggleProfileAutoSelect", "renderProfileList", "persistProfileSelection",
+    "renderProfileList", "persistProfileSelection",
     "toggleProfileSelection", "loadProfileSelection", "selectProfile",
-    "renderPromptResumeList", "selectPromptResume", "setPromptResumeAutoSelect",
+    "renderPromptResumeList", "selectPromptResume",
     "loadPromptResumeSelection", "persistPromptResumeSelection", "removePromptResume",
     "clearPromptResumeFormModalStatus", "showPromptResumeFormModalStatus",
     "resetPromptResumeFormModal", "updatePromptResumeFormModalCopy",
@@ -624,7 +631,7 @@ test("profile cards are compact; prompt lists live only in Settings", () => {
   const { node } = fixture();
   assert.equal(node("profileList").querySelectorAll(".profile-item").length, 3);
   assert.equal(node("profileList").querySelectorAll(".profile-resume-settings").length, 3);
-  assert.equal(node("profileList").querySelectorAll(".profile-auto-select").length, 3);
+  assert.equal(node("profileList").querySelectorAll(".profile-auto-select").length, 0);
   assert.equal(node("profileList").querySelectorAll(".profile-notes").length, 0);
   assert.equal(node("profileList").querySelectorAll(".profile-edit").length, 0);
   assert.equal(node("profileList").querySelectorAll(".prompt-resume-item").length, 0);
@@ -722,23 +729,19 @@ test("Settings detail drafts survive resume editing and per-tab modal restoratio
   assert.equal(node("profileSettingsResumeTemplateInput").value, "doc-bob");
 });
 
-test("profile Auto follows its selected resume without changing another profile", async () => {
-  const { ctx, profile } = fixture();
+test("saved profile Auto follows its selected resume without changing another profile", async () => {
+  const { ctx, profile } = fixture({ autoProfileIds: ["alice"] });
   await ctx.openProfileResumeSettingsModal("alice");
   await ctx.selectPromptResume("a1");
   ctx.setProfileResumeSettingsModalOpen(false);
-  await ctx.toggleProfileAutoSelect("alice");
   assert.deepEqual([...ctx.profileSelectionState.selectedProfileIds], ["alice"]);
   assert.equal(profile("alice").promptResumes.find((r) => r.autoSelect).id, "a1");
   await ctx.openProfileResumeSettingsModal("alice");
   await ctx.selectPromptResume("a2");
   assert.deepEqual(profile("alice").promptResumes.filter((r) => r.autoSelect).map((r) => r.id), ["a2"]);
   assert.ok(!profile("bob").promptResumes.some((r) => r.autoSelect));
-  ctx.setProfileResumeSettingsModalOpen(false);
-  await ctx.toggleProfileAutoSelect("alice");
-  assert.ok(!profile("alice").promptResumes.some((r) => r.autoSelect));
   assert.equal(profile("alice").selectedPromptResumeId, "a2");
-  assert.ok(!ctx.profileSelectionState.selectedProfileIds.includes("alice"));
+  assert.ok(ctx.profileSelectionState.selectedProfileIds.includes("alice"));
 });
 
 test("Add and Edit return to the same profile Settings after saving or cancelling", async () => {
@@ -791,23 +794,21 @@ test("per-tab modal restoration retains the profile and editor draft", async () 
   assert.ok(!stored().profiles.find((p) => p.id === "bob").promptResumes.some((r) => r.label === "Restored draft"));
 });
 
-test("empty profiles can open Settings, while Auto requires a resume", async () => {
+test("empty profiles can open Settings", async () => {
   const { ctx, node } = fixture();
   const row = node("profileList").children.find((item) => item.dataset.profileId === "empty");
-  assert.equal(row.querySelector(".profile-auto-select").disabled, true);
   assert.equal(row.querySelector(".profile-resume-settings").disabled, false);
   await ctx.openProfileResumeSettingsModal("empty");
   assert.ok(node("promptResumeList").textContent.includes("No prompt resumes"));
 });
 
-test("busy state blocks settings, Auto, and prompt selection", async () => {
+test("busy state blocks settings and prompt selection", async () => {
   const { ctx, node, profile } = fixture();
   ctx.areActionButtonsDisabled = true;
   ctx.renderProfileList();
   assert.ok(node("profileList").querySelectorAll(".profile-resume-settings").every((button) => button.disabled));
   await ctx.openProfileResumeSettingsModal("alice");
   await ctx.selectPromptResume("a1");
-  await ctx.toggleProfileAutoSelect("alice");
   assert.equal(ctx.profileResumeSettingsProfileId, null);
   assert.equal(profile("alice").selectedPromptResumeId, "a1");
   assert.deepEqual([...ctx.profileSelectionState.selectedProfileIds], []);
@@ -924,12 +925,10 @@ test("adding the first resume assigns it automatically without checking other pr
   assert.equal(node("promptResumeList").querySelectorAll('input[type="radio"]:checked').length, 1);
   assert.deepEqual([...ctx.profileSelectionState.selectedProfileIds], []);
   assert.equal(stored().profiles[2].selectedPromptResumeId, profile("empty").selectedPromptResumeId);
-  assert.equal(node("profileList").children[2].querySelector(".profile-auto-select").disabled, false);
 });
 
 test("removing the assigned resume selects the first remaining one and keeps Auto", async () => {
-  const { ctx, node, profile, stored } = fixture();
-  await ctx.toggleProfileAutoSelect("alice");
+  const { ctx, node, profile, stored } = fixture({ autoProfileIds: ["alice"] });
   await ctx.openProfileResumeSettingsModal("alice");
   await ctx.selectPromptResume("a2");
   await ctx.removePromptResume("a2");
