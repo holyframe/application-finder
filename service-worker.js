@@ -39,6 +39,15 @@ const AI_PROVIDERS = Object.freeze({
     promptSettleDelayMs: { min: 800, max: 1200 },
     checkPostingOnly: true
   },
+  kimi: {
+    id: "kimi",
+    label: "Kimi",
+    homeUrl: "https://www.kimi.com",
+    contentScript: "content/ai-provider.js",
+    waitForFullPageLoad: false,
+    promptSettleDelayMs: { min: 0, max: 0 },
+    checkPostingOnly: true
+  },
   // Save only: copy the resume and record the job, without navigating the tab.
   none: {
     id: "none",
@@ -2185,6 +2194,7 @@ function isCheckPostingProviderUrl(url, providerId) {
     if (id === "perplexity") {
       return hostname === "perplexity.ai" || hostname.endsWith(".perplexity.ai");
     }
+    if (id === "kimi") return /^(?:www\.)?kimi\.(?:com|ai)$/.test(hostname);
     return hostname === "chat.deepseek.com";
   } catch (_error) {
     return false;
@@ -2199,6 +2209,7 @@ function isCheckPostingAiUrl(url = "") {
       isCopilotChatUrl(url) ||
       hostname === "perplexity.ai" ||
       hostname.endsWith(".perplexity.ai") ||
+      /^(?:www\.)?kimi\.(?:com|ai)$/.test(hostname) ||
       hostname === "chat.deepseek.com"
     );
   } catch (_error) {
@@ -2219,6 +2230,7 @@ function getPostingAiProviderId(url = "") {
     if (hostname === "chat.deepseek.com") {
       return "deepseek";
     }
+    if (/^(?:www\.)?kimi\.(?:com|ai)$/.test(hostname)) return "kimi";
     if (hostname === "perplexity.ai" || hostname.endsWith(".perplexity.ai")) {
       return "perplexity";
     }
@@ -2235,7 +2247,8 @@ function checkPostingAiDefaults() {
   return {
     copilot: CHECK_POSTING_COPILOT_URL,
     perplexity: "https://www.perplexity.ai/",
-    deepseek: "https://chat.deepseek.com/"
+    deepseek: "https://chat.deepseek.com/",
+    kimi: "https://www.kimi.com/"
   };
 }
 
@@ -2250,7 +2263,8 @@ function checkPostingAiLabel(providerId) {
   return {
     copilot: "Copilot",
     perplexity: "Perplexity",
-    deepseek: "DeepSeek"
+    deepseek: "DeepSeek",
+    kimi: "Kimi"
   }[normalizeCheckPostingProviderId(providerId)];
 }
 
@@ -2284,8 +2298,18 @@ function normalizeCheckPostingAiUrl(providerId, url = "") {
   if (id === "deepseek" && parsed.hostname.toLowerCase() !== "chat.deepseek.com") {
     throw new Error("Enter a DeepSeek URL like https://chat.deepseek.com/...");
   }
+  if (id === "kimi" && !/^(?:www\.)?kimi\.(?:com|ai)$/.test(parsed.hostname.toLowerCase())) {
+    throw new Error("Enter a Kimi URL like https://www.kimi.com/...");
+  }
 
   return normalized;
+}
+
+async function openCheckPostingAiUrl(providerId, url, ownerTabId) {
+  const normalizedUrl = normalizeCheckPostingAiUrl(providerId, url);
+  if (!Number.isInteger(ownerTabId)) throw new Error("Could not identify the current browser tab.");
+  await chrome.tabs.update(ownerTabId, { url: normalizedUrl, active: true });
+  return { tabId: ownerTabId, url: normalizedUrl };
 }
 
 function validatePlayPostingDelayRange(playDelayMinSeconds = 60, playDelayMaxSeconds = 90) {
@@ -4879,6 +4903,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           error: error.message || "Could not save sheet configuration."
         });
       });
+    return true;
+  }
+
+  if (message.type === "OPEN_CHECK_POSTING_AI_URL") {
+    openCheckPostingAiUrl(message.providerId, message.url, message.ownerTabId)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 

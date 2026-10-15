@@ -73,7 +73,10 @@ Each click processes only one tab regardless of Play's configured tab count;
 it does not schedule another submission or retry. The URL is submitted when
 the chat is idle; if the chat is responding, the URL is only inserted into the
 prompt. Focus stays on that AI chat. Settings stores an editable URL for
-Copilot, Perplexity, and DeepSeek, and which one is selected. Save App still
+Copilot, Perplexity, DeepSeek, and Kimi, and which one is selected. The open-link
+icon beside each URL navigates the current browser tab to that row's entered
+URL without creating a tab. Kimi supports its `kimi.com` and `kimi.ai` chat URLs.
+Save App still
 writes the original job URL to the Google Sheet. Clicking Save App on a job in
 `Check with AI` focuses the AI chat in that same group. On other tabs, it selects
 the nearest waiting tab on the left. When Save App starts, the job tab moves
@@ -84,7 +87,7 @@ selected AI chat's window before the job joins it.
 On other pages, the Play icon beside `Check posting` opens the selected AI chat,
 or creates it if it is not open, then moves its entire `Check with AI` group to
 the right end of that Chrome window. Pinned tabs are left in place.
-On an unpinned ChatGPT, Copilot chat, Perplexity, or DeepSeek tab, Play selects the rightmost other tab
+On an unpinned ChatGPT, Copilot chat, Perplexity, DeepSeek, or Kimi tab, Play selects the rightmost other tab
 in that same Chrome window that is neither grouped nor pinned and sends its URL
 to that chat. Like the main Check posting button, Play places every new job tab
 after the rightmost tab in the AI's `Check with AI` group, including any other
@@ -215,7 +218,8 @@ columns C-F shift to D-G.
   automatically when the chat is idle; while the chat is responding, the URL is
   inserted into the prompt without submission or a scheduled retry. Focus stays
   on that AI chat. Settings lets you choose Copilot,
-  Perplexity, or DeepSeek and edit each chat URL. Save App
+  Perplexity, DeepSeek, or Kimi and edit each chat URL. Each URL's open-link icon
+  opens its entered URL in the current browser tab. Save App
   still records the original job URL in the Google Sheet. Saving a job from
   `Check with AI` focuses that group's AI chat. Starting Save App also
   moves that job tab into a separate `Saving to Docs` group to the right of the
@@ -381,4 +385,5 @@ a fresh profile and synthetic pages to verify the entire Double Play workflow:
 
 ```powershell
 node tests/double-play-browser-check.cjs msedge
+node tests/kimi-posting-browser-check.cjs msedge
 ```

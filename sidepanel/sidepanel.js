@@ -15,7 +15,7 @@ let playPostingBatchState = null;
 let isPlayPostingJobrightContinuing = false;
 const checkPostingOptionsButton = document.querySelector("#checkPostingOptionsButton");
 const checkPostingAutoNextTabInput = document.querySelector("#checkPostingAutoNextTabInput");
-const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek"];
+const CHECK_POSTING_AI_PROVIDER_IDS = ["copilot", "perplexity", "deepseek", "kimi"];
 const jobrightOpenCountInput = document.querySelector("#jobrightOpenCountInput");
 const openJobrightJobsButton = document.querySelector("#openJobrightJobsButton");
 const jobrightPlayButton = document.querySelector("#jobrightPlayButton");
@@ -2275,6 +2275,7 @@ function isPlayAiChatUrl(url = "") {
       hostname === "chatgpt.com" ||
       hostname === "chat.openai.com" ||
       hostname === "chat.deepseek.com" ||
+      /^(?:www\.)?kimi\.(?:com|ai)$/.test(hostname) ||
       hostname === "perplexity.ai" ||
       hostname.endsWith(".perplexity.ai") ||
       ((hostname === "copilot.microsoft.com" ||
@@ -2704,6 +2705,27 @@ async function saveCheckPostingSettings() {
     );
     addLog("error", error.message || "Could not save Check posting settings.");
     return false;
+  }
+}
+
+async function openCheckPostingAiUrl(providerId) {
+  const input = document.querySelector(`#checkPostingUrl-${providerId}`);
+  const button = document.querySelector(`[data-open-check-posting-url="${providerId}"]`);
+  if (!input || button?.disabled || !input.reportValidity()) return;
+  const ownerTabId = activeTabId;
+  const url = input.value.trim();
+  if (button) button.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "OPEN_CHECK_POSTING_AI_URL", providerId, url, ownerTabId
+    });
+    if (!response?.ok) throw new Error(response?.error || "Could not open the AI URL.");
+    if (input.value.trim() === url) input.value = response.url;
+  } catch (error) {
+    showStatus("error", error.message);
+    addLog("error", error.message);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -8447,6 +8469,9 @@ document.querySelectorAll("[data-check-posting-url]").forEach((input) => {
       provider.checked = true;
     }
   });
+});
+document.querySelectorAll("[data-open-check-posting-url]").forEach((button) => {
+  button.addEventListener("click", () => openCheckPostingAiUrl(button.dataset.openCheckPostingUrl));
 });
 
 promptResumeFormModalBackdrop?.addEventListener("click", () =>

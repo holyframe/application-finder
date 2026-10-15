@@ -438,7 +438,7 @@
           <h2 id="checkPostingActionSettingsModalTitle">Check posting settings</h2>
           <button id="checkPostingActionSettingsModalCloseButton" type="button" class="modal-close-button" aria-label="Close">&times;</button>
         </div>
-        <p class="modal-help">Choose Copilot, Perplexity, or DeepSeek and edit that chat URL. After the job URL is sent, focus stays on that chat.</p>
+        <p class="modal-help">Choose Copilot, Perplexity, DeepSeek, or Kimi and edit that chat URL. After the job URL is sent, focus stays on that chat.</p>
         <div class="modal-form action-settings-form">
           <fieldset class="check-posting-ai-list">
             <legend class="config-label">AI chat</legend>
@@ -453,15 +453,20 @@
                 />
                 <span>Copilot</span>
               </label>
-              <input
-                id="checkPostingUrl-copilot"
-                class="config-input"
-                data-check-posting-url="copilot"
-                type="url"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="https://copilot.microsoft.com/chats/..."
-              />
+              <div class="check-posting-ai-url-row">
+                <input
+                  id="checkPostingUrl-copilot"
+                  class="config-input"
+                  data-check-posting-url="copilot"
+                  type="url"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="https://copilot.microsoft.com/chats/..."
+                />
+                <button type="button" class="secondary-button check-posting-open-url-button" data-open-check-posting-url="copilot" aria-label="Open Copilot URL in current tab" title="Open Copilot URL in current tab">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M20 14v6H4V4h6" /></svg>
+                </button>
+              </div>
             </div>
             <div class="check-posting-ai-option">
               <label class="check-posting-ai-choice" for="checkPostingProvider-perplexity">
@@ -473,15 +478,20 @@
                 />
                 <span>Perplexity</span>
               </label>
-              <input
-                id="checkPostingUrl-perplexity"
-                class="config-input"
-                data-check-posting-url="perplexity"
-                type="url"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="https://www.perplexity.ai/..."
-              />
+              <div class="check-posting-ai-url-row">
+                <input
+                  id="checkPostingUrl-perplexity"
+                  class="config-input"
+                  data-check-posting-url="perplexity"
+                  type="url"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="https://www.perplexity.ai/..."
+                />
+                <button type="button" class="secondary-button check-posting-open-url-button" data-open-check-posting-url="perplexity" aria-label="Open Perplexity URL in current tab" title="Open Perplexity URL in current tab">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M20 14v6H4V4h6" /></svg>
+                </button>
+              </div>
             </div>
             <div class="check-posting-ai-option">
               <label class="check-posting-ai-choice" for="checkPostingProvider-deepseek">
@@ -493,15 +503,32 @@
                 />
                 <span>DeepSeek</span>
               </label>
-              <input
-                id="checkPostingUrl-deepseek"
-                class="config-input"
-                data-check-posting-url="deepseek"
-                type="url"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="https://chat.deepseek.com/..."
-              />
+              <div class="check-posting-ai-url-row">
+                <input
+                  id="checkPostingUrl-deepseek"
+                  class="config-input"
+                  data-check-posting-url="deepseek"
+                  type="url"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="https://chat.deepseek.com/..."
+                />
+                <button type="button" class="secondary-button check-posting-open-url-button" data-open-check-posting-url="deepseek" aria-label="Open DeepSeek URL in current tab" title="Open DeepSeek URL in current tab">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M20 14v6H4V4h6" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="check-posting-ai-option">
+              <label class="check-posting-ai-choice" for="checkPostingProvider-kimi">
+                <input id="checkPostingProvider-kimi" type="radio" name="checkPostingAiProvider" value="kimi" />
+                <span>Kimi</span>
+              </label>
+              <div class="check-posting-ai-url-row">
+                <input id="checkPostingUrl-kimi" class="config-input" data-check-posting-url="kimi" type="url" spellcheck="false" autocomplete="off" placeholder="https://www.kimi.com/..." />
+                <button type="button" class="secondary-button check-posting-open-url-button" data-open-check-posting-url="kimi" aria-label="Open Kimi URL in current tab" title="Open Kimi URL in current tab">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M20 14v6H4V4h6" /></svg>
+                </button>
+              </div>
             </div>
           </fieldset>
           <div class="action-setting-block">

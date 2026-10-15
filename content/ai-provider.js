@@ -6,7 +6,41 @@ function randomDelayMs(minMs, maxMs) {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
 }
 
+const KIMI_PROVIDER = Object.freeze({
+  label: "Kimi",
+  useBrowserEditingCommand: true,
+  usePointerClick: true,
+  beforeSendDelayMs: { min: 500, max: 800 },
+  inputTimeoutMs: 15000,
+  sendButtonTimeoutMs: 15000,
+  inputSelectors: [
+    '.chat-input-editor[contenteditable="true"]',
+    '[data-testid="chat-editor"] [contenteditable="true"]',
+    '[contenteditable="true"][role="textbox"]',
+    'textarea[placeholder*="Kimi" i]',
+    "textarea",
+    '[contenteditable="true"]'
+  ],
+  sendSelectors: [
+    ".send-button-container",
+    'button[data-testid="send-button"]',
+    'button[aria-label*="send" i]',
+    'button[aria-label*="发送"]',
+    'button[type="submit"]'
+  ],
+  runningSelectors: [
+    '.send-button-container [name^="Stop" i]',
+    ".send-button-container .stop-icon",
+    '[data-testid="stop-button"]',
+    'button[aria-label*="停止"]'
+  ]
+});
+
 const PROVIDERS = Object.freeze({
+  "kimi.com": KIMI_PROVIDER,
+  "www.kimi.com": KIMI_PROVIDER,
+  "kimi.ai": KIMI_PROVIDER,
+  "www.kimi.ai": KIMI_PROVIDER,
   "chat.deepseek.com": {
     label: "DeepSeek",
     useBrowserEditingCommand: true,
@@ -119,6 +153,8 @@ function isDeepSeekChatRunning() {
 }
 
 function isAiChatRunning(options = {}) {
+  const runningSelectors = getProvider()?.runningSelectors;
+  if (runningSelectors?.length && findFirst(runningSelectors)) return true;
   if (options.includeDeepSeekPrimaryControl === true && isDeepSeekChatRunning()) {
     return true;
   }
@@ -314,6 +350,7 @@ function isSendButtonReady(button) {
     button &&
       !button.disabled &&
       !button.classList?.contains("ds-button--disabled") &&
+      !button.classList?.contains("disabled") &&
       button.getAttribute("aria-disabled") !== "true" &&
       !button.closest?.('[aria-disabled="true"]')
   );
@@ -441,6 +478,9 @@ async function fillAndSend(text, options = {}) {
     throw new Error(`${provider.label} send button is not ready yet.`);
   }
 
+  if (submitOnlyWhenIdle && isAiChatRunning()) {
+    return { submitted: false, reason: "chat-running" };
+  }
   if (provider.usePointerClick) {
     clickInteractiveElement(sendButton);
   } else {
